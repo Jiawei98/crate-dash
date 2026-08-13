@@ -486,7 +486,19 @@ function getSessionStartTs() {
 }
 function markSessionStarted() {
   try {
-    if (!localStorage.getItem('crateDashSessionStartTs')) {
+    const existing = localStorage.getItem('crateDashSessionStartTs');
+    if (existing && timeLimitMinutes) {
+      const elapsedMs = Date.now() - Number(existing);
+      if (elapsedMs >= timeLimitMinutes * 60000) {
+        // Their previous visit's time was already used up. Rather than
+        // silently letting them keep playing with a timer stuck at 0:00,
+        // treat this Play click as a brand new visit — fresh clock.
+        localStorage.setItem('crateDashSessionStartTs', String(Date.now()));
+        timeUp = false;
+        return;
+      }
+    }
+    if (!existing) {
       localStorage.setItem('crateDashSessionStartTs', String(Date.now()));
     }
   } catch (e) {}
