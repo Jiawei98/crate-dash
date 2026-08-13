@@ -63,22 +63,32 @@ just falls back to the game's normal default (all on).
 ## What gets tracked
 - `demographics`: a one-time survey shown before a player's first run — age,
   gender, nationality, academic major, gaming experience, hours of gaming per
-  week, device (phone/laptop/tablet/desktop), and **group (1-4)**. Stored once
-  per browser (in `localStorage`), so returning players aren't asked again.
-- `game_start`: mode, character, skin, run number, player id
-- `game_over`: score, coins earned, zone reached, distance traveled, survival
-  time, jump count, left/right move count, character, skin, **group**, and
-  per-run totals for how many times each of the three skills (Double Jump,
-  Crate Smasher, Slow-Mo) was picked up and used
+  week, device (phone/laptop/tablet), and **group (1-4)**. Stored once per
+  browser (in `localStorage`), so returning players aren't asked again.
+- `game_start`: mode, character, skin, player id. Fired exactly **once** per
+  player — there's no way back to the main menu once someone clicks Play, so
+  this can't happen more than once per browser.
+- `game_over`: fired on **every death**, including ones a player then revives
+  from — not just their final death. Carries score, coins earned, zone
+  reached, distance traveled, survival time, jump/move counts, character,
+  skin, **group**, and that attempt's skill pickups/uses. Also carries
+  `endReason` (`'died'` normally, or `'left_page'` if they closed the tab or
+  locked the screen mid-run instead of actually dying).
 - `powerup_get` / `powerup_use`: an individual log entry each time a skill is
-  picked up or activated, for a moment-by-moment record on top of the run
-  totals
-- `revive_choice`: fired every time a player leaves the "you died" screen —
-  whether they revived with a free ad, revived by spending coins, or declined
-  (went to menu instead). Fields: `group`, `reviveChoice` (`'ad'` / `'coins'`
-  / `null` if declined), `scoreAtChoice`, `zone`, and — only on the declined
-  case — `reviveWasOffered` (false if no revive was even possible, e.g. Daily
-  Challenge mode, vs. true if they had the option and chose not to use it).
+  picked up or activated.
+- `revive_choice`: fired right after each `game_over`, once the player acts —
+  whether they revived with a free ad, revived by spending coins, or the
+  session ended without a revive (time ran out). Fields: `group`,
+  `reviveChoice` (`'ad'` / `'coins'` / `null`), `scoreAtChoice`, `zone`, and
+  — only when `reviveChoice` is `null` — `reviveWasOffered` (whether a revive
+  was actually available at that point, e.g. false once the time limit hits).
+
+**Each row in the dashboard's "Most recent runs" table is one attempt** (one
+life), not one player — a player's first try is row 1, and every revive after
+that adds another row with the same `sessionId` but a higher "Attempt #".
+This is possible because each player only ever plays once (no menu to
+restart from), so every attempt anyone makes is naturally part of their one
+continuous session.
 
 ### The revive experiment (Group 1-4)
 Each player is randomly self-assigned a group in the demographics survey.
@@ -97,6 +107,17 @@ join `game_over` and `revive_choice` events by `sessionId` (or just filter
 `reviveChoice`). The revive-price constants live near the top of the
 `showGameOver` function in `crate-dash-3d.html` if you want to change them
 (`REVIVE_GROUPS`).
+
+### Time limit
+Set a per-player time limit (e.g. 5 minutes) from the dashboard's "⚙ Game
+settings" panel — same place as the sound/vibration/shadows toggles, just
+enter a number of minutes (or leave blank for no limit). The clock starts
+the moment each player clicks Play and counts down continuously (through
+ad-watching and revive decisions too) — a countdown shows during gameplay and
+on the "you died" screen. Once time runs out, revives stop being offered; if
+they're mid-run when it happens, that run ends immediately. Clearing data
+from the dashboard also resets everyone's clock along with their coins and
+demographics answer.
 
 Each player gets an anonymous ID stored in their browser (`localStorage`), so
 you can see repeat plays from the same person without collecting anything

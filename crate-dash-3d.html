@@ -166,6 +166,7 @@
     <div id="hudRight">
       <div id="hudCoins">● 0</div>
       <div id="hudZone">Zone 1 · Sunlit Grove</div>
+      <div id="hudTimer" class="hidden" style="margin-top:3px;font-weight:800;color:#ffcf4d;font-size:13px;"></div>
     </div>
   </div>
   <div id="powerBar" class="hidden" style="position:absolute;bottom:22px;left:0;right:0;display:flex;justify-content:center;gap:18px;z-index:6;pointer-events:none;">
@@ -257,11 +258,12 @@
     <div style="font-size:15px;letter-spacing:3px;color:#b8c9bf;text-transform:uppercase;">Wiped out in <span id="goZone">Zone 1</span></div>
     <div id="bigScore">0</div>
     <div class="stat" id="goBest" style="margin-bottom:16px;">Best: <b>0</b></div>
+    <div id="goTimer" class="stat hidden" style="margin-bottom:10px;color:#ffcf4d;font-weight:800;"></div>
     <div>
       <button class="btn gold" id="btnReviveAd">📺 Revive · free ad</button>
       <button class="btn gold" id="btnRevive">⚡ Revive · 50 coins</button>
     </div>
-    <div class="stat"><button class="btn alt" id="btnMenu" style="padding:9px 20px;font-size:14px;">Menu</button></div>
+    <div id="goTimeUp" class="stat hidden" style="margin-top:14px;color:#9fb4a6;">⏱ Time's up — thanks for playing!</div>
   </div>
 
   <div id="shop" class="overlay hidden">
@@ -344,6 +346,7 @@ window.onerror = function (msg, src, line) {
         try {
           localStorage.removeItem('crateDashMobileSaveV1');
           localStorage.removeItem('crateDashDemographics');
+          localStorage.removeItem('crateDashSessionStartTs');
         } catch (e) {}
       }
       if (serverToken) { try { localStorage.setItem('crateDashResetToken', serverToken); } catch (e) {} }
@@ -458,6 +461,7 @@ function persistSave() {
 // Settings" panel, apply them on top of this player's local save. This
 // keeps sound/vibration/shadows/tilt consistent across every player without
 // anyone needing to open an in-game settings menu (there isn't one anymore).
+let timeLimitMinutes = null;
 fetch('/api/settings').then(r => r.ok ? r.json() : {}).then(cfg => {
   if (!cfg || typeof cfg !== 'object') return;
   let changed = false;
@@ -465,8 +469,62 @@ fetch('/api/settings').then(r => r.ok ? r.json() : {}).then(cfg => {
   if (typeof cfg.haptics === 'boolean') { save.haptics = cfg.haptics; changed = true; }
   if (typeof cfg.shadows === 'boolean') { save.shadows = cfg.shadows; changed = true; applyShadows(); }
   if (typeof cfg.tilt === 'boolean') { save.tilt = cfg.tilt; changed = true; }
+  if (typeof cfg.timeLimitMinutes === 'number' && cfg.timeLimitMinutes > 0) { timeLimitMinutes = cfg.timeLimitMinutes; }
   if (changed) persistSave();
 }).catch(() => {});
+
+// ============ SESSION TIME LIMIT ============
+// The clock starts the first time this browser ever clicks Play, and keeps
+// running (persisted, so a reload doesn't reset it) until the researcher's
+// configured time limit runs out — at that point revives stop being offered.
+let timeUp = false;
+function getSessionStartTs() {
+  try {
+    const v = localStorage.getItem('crateDashSessionStartTs');
+    return v ? Number(v) : null;
+  } catch (e) { return null; }
+}
+function markSessionStarted() {
+  try {
+    if (!localStorage.getItem('crateDashSessionStartTs')) {
+      localStorage.setItem('crateDashSessionStartTs', String(Date.now()));
+    }
+  } catch (e) {}
+}
+function updateTimerDisplay() {
+  const hudT = document.getElementById('hudTimer');
+  const goT = document.getElementById('goTimer');
+  const goUp = document.getElementById('goTimeUp');
+  if (!timeLimitMinutes) {
+    if (hudT) hudT.classList.add('hidden');
+    if (goT) goT.classList.add('hidden');
+    return;
+  }
+  const startTs = getSessionStartTs();
+  const totalMs = timeLimitMinutes * 60000;
+  const elapsedMs = startTs ? (Date.now() - startTs) : 0;
+  const remainingMs = Math.max(0, totalMs - elapsedMs);
+  const wasTimeUp = timeUp;
+  if (startTs && remainingMs <= 0) timeUp = true;
+  const mm = Math.floor(remainingMs / 60000);
+  const ss = Math.floor((remainingMs % 60000) / 1000);
+  const label = '⏱ ' + mm + ':' + String(ss).padStart(2, '0');
+  if (hudT) { hudT.textContent = label; hudT.classList.remove('hidden'); }
+  if (goT) {
+    if (timeUp) goT.classList.add('hidden');
+    else { goT.textContent = 'Time left: ' + mm + ':' + String(ss).padStart(2, '0'); goT.classList.remove('hidden'); }
+  }
+  if (goUp) goUp.classList.toggle('hidden', !timeUp);
+  if (!wasTimeUp && timeUp) {
+    if (state === 'play' || state === 'ready') die();
+    else if (state === 'over') {
+      $('btnRevive').style.display = 'none';
+      $('btnReviveAd').style.display = 'none';
+      recordDeclinedRevive();
+    }
+  }
+}
+setInterval(updateTimerDisplay, 1000);
 
 // ============ TELEMETRY ============
 // Sends lightweight play-data events to a local collection server (see server.js).
@@ -1718,6 +1776,7 @@ function toast(msg) {
 function startGame(m) {
   askTiltPermission();
   calibrateTilt();
+  markSessionStarted();
   mode = m || 'endless';
   rng = Math.random;
   runsPlayed++;
@@ -1770,23 +1829,31 @@ function getReviveConfig() {
   const g = getPlayerGroup();
   return REVIVE_GROUPS[g] || REVIVE_GROUPS[1];
 }
+function recordDeclinedRevive() {
+  trackEvent('revive_choice', {
+    group: getPlayerGroup(), reviveChoice: null, reviveWasOffered: false,
+    scoreAtChoice: score, zone: zone + 1
+  });
+}
 function showGameOver() {
   releaseScreenAwake();
   persistSave();
   $('bigScore').textContent = lastRunCoins;
   $('goBest').innerHTML = (lastRunCoins >= save.best && lastRunCoins > 0 ? '🏆 New best!' : 'Best: <b>' + save.best + '</b>');
   $('goZone').textContent = 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
-  const canRevive = mode === 'endless';
+  const canRevive = mode === 'endless' && !timeUp;
   const reviveCfg = getReviveConfig();
   $('btnRevive').textContent = '⚡ Revive · ' + reviveCfg.coinCost + ' coins';
   $('btnReviveAd').textContent = '📺 Revive · ' + reviveCfg.adSeconds + 's ad';
   $('btnRevive').style.display = (canRevive && save.coins >= reviveCfg.coinCost) ? 'inline-block' : 'none';
   $('btnReviveAd').style.display = canRevive ? 'inline-block' : 'none';
+  if (timeUp) recordDeclinedRevive();
   $('hud').classList.add('hidden');
   $('powerBar').classList.add('hidden');
   $('gameover').classList.remove('hidden');
 }
 function doRevive(paid) {
+  if (timeUp) return;
   const reviveCfg = getReviveConfig();
   if (paid) save.coins -= reviveCfg.coinCost;
   trackEvent('revive_choice', {
@@ -1833,16 +1900,6 @@ $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
   };
 })();
 
-$('btnMenu').onclick = () => {
-  // If the game-over screen offered a revive and the player declined by
-  // going to the menu instead, record that as their (non-)choice.
-  trackEvent('revive_choice', {
-    group: getPlayerGroup(), reviveChoice: null,
-    reviveWasOffered: mode === 'endless',
-    scoreAtChoice: score, zone: zone + 1
-  });
-  showMenu();
-};
 $('btnRevive').onclick = () => doRevive(true);
 $('btnReviveAd').onclick = () => showAd('rewarded', () => { lastRewarded = true; doRevive(false); }, getReviveConfig().adSeconds);
 

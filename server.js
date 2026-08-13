@@ -94,8 +94,12 @@ function sendJSON(res, status, obj) {
 const CHAR_LABELS = { dax: 'Dax', nova: 'Nova' };
 const SKILL_KEYS = ['dj', 'smash', 'slow'];
 
-// Groups every event by sessionId (one row per run) so the dashboard
-// can show, per run: who played, what they picked, and what they did.
+// Groups every event by sessionId, then produces ONE ROW PER ATTEMPT (per
+// game_over event) rather than one row per session — since players can no
+// longer return to the menu to start a fresh session, a single session now
+// naturally contains every attempt a person made: their first try, then one
+// row per revive after that. Each row is paired with whatever revive
+// decision immediately followed that particular death (if any).
 function buildRunRows(events) {
   const bySession = new Map();
   for (const e of events) {
@@ -105,52 +109,47 @@ function buildRunRows(events) {
   }
 
   const rows = [];
-  for (const [sid, evs] of bySession) {
+  for (const [sid, evsRaw] of bySession) {
+    const evs = evsRaw.slice().sort((a, b) => (a.ts || a._receivedAt || 0) - (b.ts || b._receivedAt || 0));
     const start = evs.find(e => e.type === 'game_start');
-    const over = evs.find(e => e.type === 'game_over');
-    const gets = evs.filter(e => e.type === 'powerup_get');
-    const uses = evs.filter(e => e.type === 'powerup_use');
-    const first = evs[0];
+    const overs = evs.filter(e => e.type === 'game_over');
+    const revives = evs.filter(e => e.type === 'revive_choice');
 
-    // Prefer the totals carried on game_over (present on runs recorded with
-    // the newer client); fall back to counting individual pickup/use events
-    // for older recordings that don't have them.
-    const getCount = k => (over && over[k + 'Gets'] != null) ? over[k + 'Gets'] : gets.filter(e => e.skill === k).length;
-    const useCount = k => (over && over[k + 'Uses'] != null) ? over[k + 'Uses'] : uses.filter(e => e.skill === k).length;
-    const totalGets = SKILL_KEYS.reduce((a, k) => a + getCount(k), 0);
-    const totalUses = SKILL_KEYS.reduce((a, k) => a + useCount(k), 0);
-    const reviveChoices = evs
-      .filter(e => e.type === 'revive_choice')
-      .map(e => e.reviveChoice == null ? 'none' : e.reviveChoice)
-      .join(', ');
+    overs.forEach((over, i) => {
+      const overTs = over.ts || over._receivedAt || 0;
+      const nextOverTs = overs[i + 1] ? (overs[i + 1].ts || overs[i + 1]._receivedAt || Infinity) : Infinity;
+      // The revive decision (if any) made right after this specific death,
+      // before the next one.
+      const matchingRevive = revives.find(r => {
+        const rTs = r.ts || r._receivedAt || 0;
+        return rTs >= overTs && rTs < nextOverTs;
+      });
+      const reviveMethod = matchingRevive ? (matchingRevive.reviveChoice == null ? 'none' : matchingRevive.reviveChoice) : '';
 
-    rows.push({
-      'Session ID': sid,
-      'Player ID': (start || over || first || {}).playerId || '',
-      'Started At': start ? new Date(start.ts || start._receivedAt).toLocaleString() : '',
-      'Ended At': over ? new Date(over.ts || over._receivedAt).toLocaleString() : '',
-      'Mode': (start || over || {}).mode || '',
-      'Character': (start || over || {}).character || '',
-      'Skin': (start || over || {}).skin || '',
-      'Completed': over ? 'Yes' : 'No',
-      'Score': over ? (over.score ?? '') : '',
-      'Coins Earned': over ? (over.coinsEarned ?? '') : '',
-      'Zone Reached': over ? (over.zone ?? '') : '',
-      'Distance': over ? (over.distance ?? '') : '',
-      'Survival Time (s)': over ? (over.survivalTime ?? '') : '',
-      'Jumps': over ? (over.jumps ?? '') : '',
-      'Moves': over ? (over.moves ?? '') : '',
-      'Double Jump Picked Up': getCount('dj'),
-      'Double Jump Used': useCount('dj'),
-      'Crate Smasher Picked Up': getCount('smash'),
-      'Crate Smasher Used': useCount('smash'),
-      'Slow-Mo Picked Up': getCount('slow'),
-      'Slow-Mo Used': useCount('slow'),
-      'Total Skills Picked Up': totalGets,
-      'Total Skills Used': totalUses,
-      'Skill Use Rate': totalGets ? Math.round((totalUses / totalGets) * 100) + '%' : '0%',
-      'Revive Method': reviveChoices,
-      '_sortTs': (start || over || first || {}).ts || (start || over || first || {})._receivedAt || 0
+      rows.push({
+        'Session ID': sid,
+        'Player ID': over.playerId || (start || {}).playerId || '',
+        'Attempt #': i + 1,
+        'Group': over.group ?? (matchingRevive || {}).group ?? '',
+        'Ended At': new Date(overTs).toLocaleString(),
+        'Character': over.character || (start || {}).character || '',
+        'Skin': over.skin || (start || {}).skin || '',
+        'Coins Earned': over.coinsEarned ?? '',
+        'Zone Reached': over.zone ?? '',
+        'Distance': over.distance ?? '',
+        'Survival Time (s)': over.survivalTime ?? '',
+        'Jumps': over.jumps ?? '',
+        'Moves': over.moves ?? '',
+        'Double Jump Picked Up': over.djGets ?? 0,
+        'Double Jump Used': over.djUses ?? 0,
+        'Crate Smasher Picked Up': over.smashGets ?? 0,
+        'Crate Smasher Used': over.smashUses ?? 0,
+        'Slow-Mo Picked Up': over.slowGets ?? 0,
+        'Slow-Mo Used': over.slowUses ?? 0,
+        'Revive Method': reviveMethod,
+        'End Reason': over.endReason || 'died',
+        '_sortTs': overTs
+      });
     });
   }
 
@@ -170,11 +169,13 @@ function buildDashboard(events) {
   const avgZone = totalRuns ? (overs.reduce((a, e) => a + (e.zone || 0), 0) / totalRuns).toFixed(1) : '0';
   const avgDistance = totalRuns ? Math.round(overs.reduce((a, e) => a + (e.distance || 0), 0) / totalRuns) : 0;
 
-  const runRows = buildRunRows(events).filter(r => r['Completed'] === 'Yes').reverse().slice(0, 50);
+  const runRows = buildRunRows(events).reverse().slice(0, 50);
   const recentRows = runRows.map(r => `
     <tr>
       <td>${escapeHtml(r['Ended At'])}</td>
       <td>${escapeHtml(r['Player ID'])}</td>
+      <td>${r['Attempt #']}</td>
+      <td>${escapeHtml(String(r['Group'] ?? ''))}</td>
       <td>${escapeHtml(CHAR_LABELS[r['Character']] || r['Character'])}</td>
       <td>${escapeHtml(r['Skin'])}</td>
       <td>${r['Coins Earned']}</td>
@@ -187,6 +188,7 @@ function buildDashboard(events) {
       <td>${r['Crate Smasher Picked Up']} / ${r['Crate Smasher Used']}</td>
       <td>${r['Slow-Mo Picked Up']} / ${r['Slow-Mo Used']}</td>
       <td>${escapeHtml(r['Revive Method'] || '—')}</td>
+      <td>${escapeHtml(r['End Reason'] || '')}</td>
     </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -245,30 +247,33 @@ function buildDashboard(events) {
     }
 
     const SETTINGS_DEFS = [
-      { key: 'sound', label: 'Sound' },
-      { key: 'haptics', label: 'Vibration' },
-      { key: 'shadows', label: 'Shadows (quality)' },
-      { key: 'tilt', label: 'Tilt steering' }
+      { key: 'sound', label: 'Sound', type: 'bool' },
+      { key: 'haptics', label: 'Vibration', type: 'bool' },
+      { key: 'shadows', label: 'Shadows (quality)', type: 'bool' },
+      { key: 'tilt', label: 'Tilt steering', type: 'bool' },
+      { key: 'timeLimitMinutes', label: 'Time limit (minutes)', type: 'number' }
     ];
 
     async function openSettingsPanel() {
-      document.getElementById('settingsFields').innerHTML = SETTINGS_DEFS.map(d =>
-        '<label style="display:flex;justify-content:space-between;align-items:center;gap:10px;">' +
-          '<span>' + d.label + '</span>' +
-          '<select id="setf_' + d.key + '" style="padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">' +
-            '<option value="">No override</option>' +
-            '<option value="true">Force On</option>' +
-            '<option value="false">Force Off</option>' +
-          '</select>' +
-        '</label>'
-      ).join('');
+      document.getElementById('settingsFields').innerHTML = SETTINGS_DEFS.map(d => {
+        const control = d.type === 'number'
+          ? '<input type="number" min="1" step="1" id="setf_' + d.key + '" placeholder="No limit" style="width:90px;padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">'
+          : '<select id="setf_' + d.key + '" style="padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">' +
+              '<option value="">No override</option>' +
+              '<option value="true">Force On</option>' +
+              '<option value="false">Force Off</option>' +
+            '</select>';
+        return '<label style="display:flex;justify-content:space-between;align-items:center;gap:10px;"><span>' + d.label + '</span>' + control + '</label>';
+      }).join('');
       document.getElementById('settingsMsg').style.display = 'none';
       document.getElementById('settingsOverlay').style.display = 'flex';
       try {
         const res = await fetch('/api/settings');
         const current = await res.json();
         SETTINGS_DEFS.forEach(d => {
-          if (typeof current[d.key] === 'boolean') {
+          if (d.type === 'number') {
+            if (typeof current[d.key] === 'number') document.getElementById('setf_' + d.key).value = current[d.key];
+          } else if (typeof current[d.key] === 'boolean') {
             document.getElementById('setf_' + d.key).value = String(current[d.key]);
           }
         });
@@ -285,7 +290,11 @@ function buildDashboard(events) {
       const settings = {};
       SETTINGS_DEFS.forEach(d => {
         const v = document.getElementById('setf_' + d.key).value;
-        settings[d.key] = v === '' ? null : v === 'true';
+        if (d.type === 'number') {
+          settings[d.key] = v === '' ? null : Number(v);
+        } else {
+          settings[d.key] = v === '' ? null : v === 'true';
+        }
       });
       try {
         const res = await fetch('/api/settings', {
@@ -316,14 +325,14 @@ function buildDashboard(events) {
     <div class="card"><b>${avgDistance}</b>Avg distance</div>
   </div>
 
-  <h2>Most recent runs <span style="color:#7d947f; font-weight:normal; font-size:12px;">(skill columns show Picked up / Used)</span></h2>
+  <h2>Most recent runs <span style="color:#7d947f; font-weight:normal; font-size:12px;">(one row per attempt — first try, then one row per revive. Skill columns show Picked up / Used)</span></h2>
   <table>
     <tr>
-      <th>Time</th><th>Player</th><th>Character</th><th>Skin</th>
+      <th>Time</th><th>Player</th><th>Attempt #</th><th>Group</th><th>Character</th><th>Skin</th>
       <th>Coins</th><th>Zone</th><th>Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
-      <th>🦅 Double Jump</th><th>🔨 Crate Smasher</th><th>⏳ Slow-Mo</th><th>Revive Method</th>
+      <th>🦅 Double Jump</th><th>🔨 Crate Smasher</th><th>⏳ Slow-Mo</th><th>Revive Method</th><th>End Reason</th>
     </tr>
-    ${recentRows || '<tr><td colspan="14">No runs yet — go play!</td></tr>'}
+    ${recentRows || '<tr><td colspan="17">No runs yet — go play!</td></tr>'}
   </table>
 </body></html>`;
 }
