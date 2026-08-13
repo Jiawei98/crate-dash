@@ -38,6 +38,15 @@ enter the key when prompted, confirm. The live data resets to empty — but a
 full backup is saved first to `data/backups/` (never deleted automatically),
 so nothing is ever actually lost.
 
+**This also resets every player, not just the server's records.** Coins and
+the demographics answer are stored in each player's own browser
+(`localStorage`), so clearing data on the server alone wouldn't normally
+touch them. To handle that, the game checks a small "reset token" from the
+server every time it loads; clearing data changes that token, so the next
+time each player opens the link, their browser notices, wipes its own saved
+coins and demographics answer, and shows the survey again — like a brand new
+visitor. No redeploy or action needed on their end.
+
 ## Controlling settings for everyone (Dashboard → "Game settings")
 There's no more in-game Settings menu — sound, vibration, shadow quality, and
 tilt steering are now controlled centrally from the dashboard instead, so

@@ -22,6 +22,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const EVENTS_FILE = path.join(DATA_DIR, 'events.jsonl');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const RESET_FILE = path.join(DATA_DIR, 'reset-token.json');
 // Set ADMIN_KEY (env var) to enable clearing data via the dashboard's
 // "Clear all data" button or POST /api/clear. Left unset, clearing is
 // disabled — a safer default once this is deployed publicly.
@@ -39,6 +40,26 @@ function readEvents() {
   }).filter(Boolean);
 }
 
+// Every browser remembers a "reset token" alongside its own coins/save data
+// and demographics answer. Whenever the dashboard clears data, this token
+// changes — so the next time each player's browser loads the game, it
+// notices the mismatch and wipes its own local coins/save/demographics too,
+// putting everyone back to a clean first-time state.
+function readResetToken() {
+  try {
+    return JSON.parse(fs.readFileSync(RESET_FILE, 'utf8')).token;
+  } catch (e) {
+    const token = String(Date.now());
+    try { fs.writeFileSync(RESET_FILE, JSON.stringify({ token })); } catch (e2) {}
+    return token;
+  }
+}
+function bumpResetToken() {
+  const token = String(Date.now());
+  fs.writeFileSync(RESET_FILE, JSON.stringify({ token }));
+  return token;
+}
+
 // Moves the current data to a timestamped backup file (never deletes
 // outright) and starts a fresh, empty events file.
 function clearEvents() {
@@ -47,7 +68,8 @@ function clearEvents() {
   const backupPath = path.join(BACKUP_DIR, `events-${stamp}.jsonl`);
   fs.copyFileSync(EVENTS_FILE, backupPath);
   fs.writeFileSync(EVENTS_FILE, '');
-  return { clearedCount: events.length, backupFile: path.basename(backupPath) };
+  const resetToken = bumpResetToken();
+  return { clearedCount: events.length, backupFile: path.basename(backupPath), resetToken };
 }
 
 // Global game settings (sound/vibration/shadows/tilt) that override every
@@ -406,6 +428,12 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/events') {
     return sendJSON(res, 200, readEvents());
+  }
+
+  // Public: every player's game checks this on load to know whether the
+  // researcher has cleared data since this browser last visited.
+  if (req.method === 'GET' && url.pathname === '/api/reset-token') {
+    return sendJSON(res, 200, { token: readResetToken() });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/clear') {

@@ -341,6 +341,31 @@ window.onerror = function (msg, src, line) {
   return false;
 };
 
+// Ask the server (synchronously, so this always finishes before the
+// demographics gate below reads localStorage) whether the researcher has
+// cleared all data since this browser last visited. If so, wipe this
+// browser's own coins/save and demographics answer too, so every player
+// starts completely fresh right after a "Clear all data" on the dashboard.
+(function checkServerReset() {
+  var localToken = null;
+  try { localToken = localStorage.getItem('crateDashResetToken'); } catch (e) {}
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/reset-token', false);
+    xhr.send(null);
+    if (xhr.status === 200) {
+      var serverToken = JSON.parse(xhr.responseText).token;
+      if (localToken && serverToken && localToken !== serverToken) {
+        try {
+          localStorage.removeItem('crateDashMobileSaveV1');
+          localStorage.removeItem('crateDashDemographics');
+        } catch (e) {}
+      }
+      if (serverToken) { try { localStorage.setItem('crateDashResetToken', serverToken); } catch (e) {} }
+    }
+  } catch (e) {}
+})();
+
 // Runs immediately, before the 3D engine below even starts loading, so the
 // survey (or the menu, if already completed) appears instantly on load.
 (function gateOnDemographics() {
