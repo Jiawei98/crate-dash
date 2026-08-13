@@ -131,7 +131,7 @@
   }
   @media (max-height:650px) {
     .overlay { justify-content:flex-start; }
-    #menu, #gameover, #daily, #shop { padding-top:calc(18px + env(safe-area-inset-top)); }
+    #menu, #gameover, #shop { padding-top:calc(18px + env(safe-area-inset-top)); }
     h1 { font-size:34px; }
     .sub { margin:6px 0 10px; line-height:1.35; }
     .btn { padding:11px 23px; font-size:15px; min-height:44px; margin:4px; }
@@ -198,7 +198,7 @@
         </select>
       </label>
       <label style="font-size:12px;color:#9fb4a6;">Nationality
-        <input id="demoNationality" type="text" placeholder="e.g. Portuguese" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+        <input id="demoNationality" type="text" placeholder="e.g. Portugal" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
       </label>
       <label style="font-size:12px;color:#9fb4a6;">Academic major / field of study
         <input id="demoMajor" type="text" placeholder="e.g. Economics" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
@@ -221,7 +221,6 @@
           <option value="phone">Cell phone</option>
           <option value="laptop">Laptop</option>
           <option value="tablet">Tablet</option>
-          <option value="desktop">Desktop</option>
         </select>
       </label>
       <label style="font-size:12px;color:#9fb4a6;">Group
@@ -258,7 +257,6 @@
     <div style="font-size:15px;letter-spacing:3px;color:#b8c9bf;text-transform:uppercase;">Wiped out in <span id="goZone">Zone 1</span></div>
     <div id="bigScore">0</div>
     <div class="stat" id="goBest" style="margin-bottom:16px;">Best: <b>0</b></div>
-    <div id="goDailyRank" class="stat hidden" style="margin-bottom:10px;color:#ffcf4d;font-weight:800;font-size:17px;"></div>
     <div>
       <button class="btn gold" id="btnReviveAd">📺 Revive · free ad</button>
       <button class="btn gold" id="btnRevive">⚡ Revive · 50 coins</button>
@@ -284,19 +282,6 @@
     </div>
     <div class="small">Prototype: purchases are simulated. In the Play Store build this hooks into Google Play Billing.</div>
     <button class="btn alt" id="btnShopBack" style="margin-top:14px;">Back</button>
-  </div>
-
-  <div id="daily" class="overlay hidden">
-    <h1 style="font-size:28px;"><span class="g1">DAILY</span> <span class="g2">CHALLENGE</span></h1>
-    <div class="sub" id="dailyDate" style="margin:8px 0 14px;font-size:13px;"></div>
-    <div id="lbList" style="width:86%;max-width:340px;"></div>
-    <div style="margin-top:12px;">
-      <button class="btn" id="btnDailyPlay">▶ &nbsp;Run today's course</button>
-    </div>
-    <div>
-      <button class="btn alt" id="btnShareRank" style="padding:10px 22px;font-size:14px;">Share rank</button>
-      <button class="btn alt" id="btnDailyBack" style="padding:10px 22px;font-size:14px;">Back</button>
-    </div>
   </div>
 
   <div id="settings" class="overlay hidden" style="z-index:40;">
@@ -456,7 +441,7 @@ const SKINS = [
   { id: 'gold',   name: 'Solid gold', color: 0xffcf4d, css: '#ffcf4d', price: 1500 },
   { id: 'shadow', name: 'Shadow',  color: 0x2c2c34, css: '#2c2c34', price: 2500 },
 ];
-const DEFAULT_SAVE = { coins: 50, best: 0, owned: { mint: true }, equipped: 'mint', adsRemoved: false, bundleBought: false, dailyBest: -1, character: 'dax', tilt: true, tiltSens: 7, sound: true, haptics: true, shadows: true };
+const DEFAULT_SAVE = { coins: 50, best: 0, owned: { mint: true }, equipped: 'mint', adsRemoved: false, bundleBought: false, character: 'dax', tilt: true, tiltSens: 7, sound: true, haptics: true, shadows: true };
 let save = { ...DEFAULT_SAVE, owned: { ...DEFAULT_SAVE.owned } };
 try {
   const saved = JSON.parse(localStorage.getItem('crateDashMobileSaveV1') || 'null');
@@ -517,8 +502,30 @@ function trackEvent(type, data) {
     }).catch(() => {});
   } catch (e) {}
 }
-window.addEventListener('pagehide', persistSave);
-document.addEventListener('visibilitychange', () => { if (document.hidden) persistSave(); });
+let runEndRecorded = false;
+function recordAbandonedIfMidRun() {
+  if (document.hidden && !runEndRecorded && (state === 'play' || state === 'ready')) {
+    runEndRecorded = true;
+    recordGameOver('left_page');
+  }
+}
+window.addEventListener('pagehide', () => {
+  persistSave();
+  recordAbandonedIfMidRun();
+});
+let hiddenTimer = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    persistSave();
+    // Locking the screen / switching away counts as leaving mid-run, but
+    // only if it lasts a while — a brief glance at a notification and
+    // coming right back shouldn't end the run.
+    clearTimeout(hiddenTimer);
+    hiddenTimer = setTimeout(recordAbandonedIfMidRun, 8000);
+  } else {
+    clearTimeout(hiddenTimer);
+  }
+});
 function haptic(pattern) {
   if (save.haptics === false) return;
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
@@ -541,8 +548,6 @@ async function enterFullscreen() {
   } catch (e) {}
   try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('portrait'); } catch (e) {}
 }
-function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-function todaySeed() { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
 let rng = Math.random;
 let mode = 'endless';
 let runsPlayed = 0, deathsSinceAd = 0, lastRewarded = false, lastRunCoins = 0;
@@ -1078,6 +1083,7 @@ function resetRun() {
   resetCurveSystem();
   if (zone !== 0) { zone = 0; applyZone(true); } else { zone = 0; rebuildDecos(); }
   player.position.set(0, 0, 0);
+  runEndRecorded = false;
   updateHUD();
 }
 let zoneLerp = 1;
@@ -1288,16 +1294,10 @@ function burst(x, y, z, color) {
     bursts.push({ mesh: m, vx: (Math.random() - 0.5) * 9, vy: Math.random() * 8, vz: (Math.random() - 0.5) * 9, life: 0.9 });
   }
 }
-function die() {
-  state = 'over';
-  haptic([90, 45, 130]); shakeT = 0.5;
-  beep(130, 0.4, 'sawtooth', 0.09);
-  burst(player.position.x, 1.2, 0, SKINS.find(s => s.id === save.equipped).color);
-  player.visible = false;
+function recordGameOver(endReason) {
   lastRunCoins = runCoins;
   save.coins += runCoins;
   if (lastRunCoins > save.best) save.best = lastRunCoins;
-  if (mode === 'daily' && score > save.dailyBest) save.dailyBest = score;
   persistSave();
   trackEvent('game_over', {
     mode, score, coinsEarned: runCoins, zone: zone + 1,
@@ -1305,8 +1305,17 @@ function die() {
     distance: Math.floor(dist), survivalTime: Number(runTime.toFixed(1)), jumps: runJumps, moves: runMoves,
     djGets: runSkillGets.dj, djUses: runSkillUses.dj,
     smashGets: runSkillGets.smash, smashUses: runSkillUses.smash,
-    slowGets: runSkillGets.slow, slowUses: runSkillUses.slow
+    slowGets: runSkillGets.slow, slowUses: runSkillUses.slow,
+    endReason: endReason || 'died'
   });
+}
+function die() {
+  state = 'over';
+  haptic([90, 45, 130]); shakeT = 0.5;
+  beep(130, 0.4, 'sawtooth', 0.09);
+  burst(player.position.x, 1.2, 0, SKINS.find(s => s.id === save.equipped).color);
+  player.visible = false;
+  recordGameOver('died');
   setTimeout(showGameOver, 600);
 }
 function levelUp() {
@@ -1699,7 +1708,7 @@ const $ = id => document.getElementById(id);
 function updateHUD() {
   $('hudScore').textContent = '● ' + runCoins;
   $('hudCoins').textContent = '● ' + (save.coins + runCoins);
-  $('hudZone').textContent = (mode === 'daily' ? '🏆 Daily · ' : '') + 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
+  $('hudZone').textContent = 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
 }
 function toast(msg) {
   const t = $('toast');
@@ -1710,7 +1719,7 @@ function startGame(m) {
   askTiltPermission();
   calibrateTilt();
   mode = m || 'endless';
-  rng = mode === 'daily' ? mulberry32(todaySeed()) : Math.random;
+  rng = Math.random;
   runsPlayed++;
   sessionId = 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   trackEvent('game_start', { mode, character: save.character, skin: save.equipped, runsPlayed });
@@ -1721,7 +1730,6 @@ function startGame(m) {
   $('menu').classList.add('hidden');
   $('gameover').classList.add('hidden');
   $('shop').classList.add('hidden');
-  $('daily').classList.add('hidden');
   $('hud').classList.remove('hidden');
   $('powerBar').classList.remove('hidden');
   paintPowerBar();
@@ -1737,7 +1745,6 @@ function showMenu() {
   $('menuBest').innerHTML = 'Best: <b>' + save.best + '</b>';
   $('gameover').classList.add('hidden');
   $('shop').classList.add('hidden');
-  $('daily').classList.add('hidden');
   $('hud').classList.add('hidden');
   $('powerBar').classList.add('hidden');
   $('menu').classList.remove('hidden');
@@ -1775,9 +1782,6 @@ function showGameOver() {
   $('btnReviveAd').textContent = '📺 Revive · ' + reviveCfg.adSeconds + 's ad';
   $('btnRevive').style.display = (canRevive && save.coins >= reviveCfg.coinCost) ? 'inline-block' : 'none';
   $('btnReviveAd').style.display = canRevive ? 'inline-block' : 'none';
-  const dr = $('goDailyRank');
-  if (mode === 'daily') { dr.classList.remove('hidden'); dr.textContent = '🏆 Daily rank: #' + dailyRank(); }
-  else dr.classList.add('hidden');
   $('hud').classList.add('hidden');
   $('powerBar').classList.add('hidden');
   $('gameover').classList.remove('hidden');
@@ -1841,15 +1845,6 @@ $('btnMenu').onclick = () => {
 };
 $('btnRevive').onclick = () => doRevive(true);
 $('btnReviveAd').onclick = () => showAd('rewarded', () => { lastRewarded = true; doRevive(false); }, getReviveConfig().adSeconds);
-$('btnDailyBack').onclick = showMenu;
-$('btnDailyPlay').onclick = () => { enterFullscreen(); startGame('daily'); };
-$('btnShareRank').onclick = async () => {
-  const txt = "I'm #" + dailyRank() + " in today's Crate Dash daily challenge (" + Math.max(0, save.dailyBest) + 'm) 🏆 Beat me!';
-  try {
-    if (navigator.share) await navigator.share({ text: txt });
-    else { await navigator.clipboard.writeText(txt); toast('Rank copied — paste it anywhere!'); }
-  } catch (e) {}
-};
 
 // ============ ADS (simulated) ============
 let adCb = null, adTick = null;
@@ -1879,28 +1874,6 @@ function finishAd() {
 }
 $('btnAdClose').onclick = finishAd;
 
-// ============ DAILY CHALLENGE ============
-const BOTNAMES = ['TurboLisboa', 'CrateKing', 'MilanRunner', 'PixelPedro', 'JumpMaria', 'SofiaSpeed', 'DashDiego', 'NeonRita', 'BoxHopper'];
-function dailyBots() {
-  const r = mulberry32(todaySeed() + 7);
-  return BOTNAMES.map(n => ({ n, s: 20 + Math.floor(r() * 260) })).sort((a, b) => b.s - a.s);
-}
-function dailyRank() {
-  return dailyBots().filter(b => b.s > Math.max(0, save.dailyBest)).length + 1;
-}
-function openDaily() {
-  state = 'daily';
-  $('menu').classList.add('hidden');
-  $('daily').classList.remove('hidden');
-  $('dailyDate').textContent = new Date().toDateString() + ' · same course for everyone · revives disabled';
-  const rows = dailyBots().map(b => ({ n: b.n, s: b.s, me: false }));
-  if (save.dailyBest >= 0) rows.push({ n: 'You', s: save.dailyBest, me: true });
-  rows.sort((a, b) => b.s - a.s);
-  $('lbList').innerHTML = rows.slice(0, 10).map((r, i) =>
-    '<div style="display:flex;justify-content:space-between;padding:8px 14px;border-radius:10px;margin-bottom:5px;font-size:14px;font-weight:700;'
-    + (r.me ? 'background:rgba(109,255,156,0.18);border:1px solid #6dff9c;color:#6dff9c;' : 'background:rgba(14,28,20,0.9);border:1px solid #2c4436;color:#d7e6dc;')
-    + '"><span>#' + (i + 1) + ' &nbsp;' + r.n + '</span><span>' + r.s + 'm</span></div>').join('');
-}
 
 $('btnShopBack').onclick = showMenu;
 function openShop() {

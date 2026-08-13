@@ -92,32 +92,7 @@ function sendJSON(res, status, obj) {
 }
 
 const CHAR_LABELS = { dax: 'Dax', nova: 'Nova' };
-const SKILL_LABELS = { dj: '🦅 Double Jump', smash: '🔨 Crate Smasher', slow: '⏳ Slow-Mo' };
 const SKILL_KEYS = ['dj', 'smash', 'slow'];
-
-function countBy(events, key) {
-  const counts = {};
-  for (const e of events) {
-    const v = e[key] || 'unknown';
-    counts[v] = (counts[v] || 0) + 1;
-  }
-  return counts;
-}
-
-function barRows(counts, labelMap, total) {
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  if (!entries.length) return '<div class="barrow"><span class="barlabel">No data yet</span></div>';
-  return entries.map(([key, count]) => {
-    const pct = total ? Math.round((count / total) * 100) : 0;
-    const label = (labelMap && labelMap[key]) || key;
-    return `
-    <div class="barrow">
-      <span class="barlabel">${escapeHtml(label)}</span>
-      <div class="bartrack"><div class="barfill" style="width:${pct}%"></div></div>
-      <span class="barcount">${count} (${pct}%)</span>
-    </div>`;
-  }).join('');
-}
 
 // Groups every event by sessionId (one row per run) so the dashboard
 // can show, per run: who played, what they picked, and what they did.
@@ -144,6 +119,10 @@ function buildRunRows(events) {
     const useCount = k => (over && over[k + 'Uses'] != null) ? over[k + 'Uses'] : uses.filter(e => e.skill === k).length;
     const totalGets = SKILL_KEYS.reduce((a, k) => a + getCount(k), 0);
     const totalUses = SKILL_KEYS.reduce((a, k) => a + useCount(k), 0);
+    const reviveChoices = evs
+      .filter(e => e.type === 'revive_choice')
+      .map(e => e.reviveChoice == null ? 'none' : e.reviveChoice)
+      .join(', ');
 
     rows.push({
       'Session ID': sid,
@@ -170,6 +149,7 @@ function buildRunRows(events) {
       'Total Skills Picked Up': totalGets,
       'Total Skills Used': totalUses,
       'Skill Use Rate': totalGets ? Math.round((totalUses / totalGets) * 100) + '%' : '0%',
+      'Revive Method': reviveChoices,
       '_sortTs': (start || over || first || {}).ts || (start || over || first || {})._receivedAt || 0
     });
   }
@@ -182,44 +162,21 @@ function buildRunRows(events) {
 function buildDashboard(events) {
   const starts = events.filter(e => e.type === 'game_start');
   const overs = events.filter(e => e.type === 'game_over');
-  const gets = events.filter(e => e.type === 'powerup_get');
-  const uses = events.filter(e => e.type === 'powerup_use');
   const players = new Set(events.map(e => e.playerId).filter(Boolean));
   const scores = overs.map(e => e.score || 0);
-  const totalRuns = overs.length;
+  const totalRuns = overs.length; // used as the averages' denominator, not shown as its own card
   const avgScore = totalRuns ? (scores.reduce((a, b) => a + b, 0) / totalRuns).toFixed(1) : '0';
   const bestScore = scores.length ? Math.max(...scores) : 0;
-  const totalCoins = overs.reduce((a, e) => a + (e.coinsEarned || 0), 0);
   const avgZone = totalRuns ? (overs.reduce((a, e) => a + (e.zone || 0), 0) / totalRuns).toFixed(1) : '0';
   const avgDistance = totalRuns ? Math.round(overs.reduce((a, e) => a + (e.distance || 0), 0) / totalRuns) : 0;
-  const avgSurvival = totalRuns ? (overs.reduce((a, e) => a + (e.survivalTime || 0), 0) / totalRuns).toFixed(1) : '0';
-
-  const modeCounts = countBy(overs, 'mode');
-  const charCounts = countBy(starts, 'character');
-  const skinCounts = countBy(starts, 'skin');
-
-  const getCounts = countBy(gets, 'skill');
-  const useCounts = countBy(uses, 'skill');
-  const skillRows = SKILL_KEYS.map(k => {
-    const g = getCounts[k] || 0, u = useCounts[k] || 0;
-    const rate = g ? Math.round((u / g) * 100) : 0;
-    return `<tr>
-      <td>${SKILL_LABELS[k]}</td>
-      <td>${g}</td>
-      <td>${u}</td>
-      <td>${rate}%</td>
-    </tr>`;
-  }).join('');
 
   const runRows = buildRunRows(events).filter(r => r['Completed'] === 'Yes').reverse().slice(0, 50);
   const recentRows = runRows.map(r => `
     <tr>
       <td>${escapeHtml(r['Ended At'])}</td>
       <td>${escapeHtml(r['Player ID'])}</td>
-      <td>${escapeHtml(r['Mode'])}</td>
       <td>${escapeHtml(CHAR_LABELS[r['Character']] || r['Character'])}</td>
       <td>${escapeHtml(r['Skin'])}</td>
-      <td>${r['Score']}</td>
       <td>${r['Coins Earned']}</td>
       <td>${r['Zone Reached']}</td>
       <td>${r['Distance']}</td>
@@ -229,6 +186,7 @@ function buildDashboard(events) {
       <td>${r['Double Jump Picked Up']} / ${r['Double Jump Used']}</td>
       <td>${r['Crate Smasher Picked Up']} / ${r['Crate Smasher Used']}</td>
       <td>${r['Slow-Mo Picked Up']} / ${r['Slow-Mo Used']}</td>
+      <td>${escapeHtml(r['Revive Method'] || '—')}</td>
     </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -244,13 +202,6 @@ function buildDashboard(events) {
   th, td { border-bottom:1px solid #2c4436; padding:6px 10px; text-align:left; }
   th { color:#9fb4a6; }
   a { color:#6dff9c; }
-  .panels { display:flex; gap:32px; flex-wrap:wrap; }
-  .panel { flex:1; min-width:280px; }
-  .barrow { display:flex; align-items:center; gap:8px; margin:8px 0; }
-  .barlabel { width:140px; flex-shrink:0; font-size:13px; color:#d7e6dc; }
-  .bartrack { flex:1; background:#1a3324; border-radius:6px; height:14px; overflow:hidden; }
-  .barfill { background:#6dff9c; height:100%; }
-  .barcount { width:90px; flex-shrink:0; font-size:12px; color:#9fb4a6; text-align:right; }
 </style></head>
 <body>
   <h1>Crate Dash 3D — Play Data</h1>
@@ -358,46 +309,21 @@ function buildDashboard(events) {
   </script>
   <div class="stats">
     <div class="card"><b>${players.size}</b>Players</div>
-    <div class="card"><b>${totalRuns}</b>Runs completed</div>
     <div class="card"><b>${starts.length}</b>Runs started</div>
     <div class="card"><b>${avgScore}</b>Avg score</div>
     <div class="card"><b>${bestScore}</b>Best score</div>
     <div class="card"><b>${avgZone}</b>Avg zone reached</div>
     <div class="card"><b>${avgDistance}</b>Avg distance</div>
-    <div class="card"><b>${avgSurvival}</b>Avg survival (s)</div>
-    <div class="card"><b>${totalCoins}</b>Total coins earned</div>
   </div>
-
-  <div class="panels">
-    <div class="panel">
-      <h2>Character usage (by runs started)</h2>
-      ${barRows(charCounts, CHAR_LABELS, starts.length)}
-    </div>
-    <div class="panel">
-      <h2>Game mode</h2>
-      ${barRows(modeCounts, { endless: 'Endless', daily: 'Daily Challenge' }, overs.length)}
-    </div>
-    <div class="panel">
-      <h2>Skin usage</h2>
-      ${barRows(skinCounts, null, starts.length)}
-    </div>
-  </div>
-
-  <h2>Special skills — pickups vs. uses</h2>
-  <table>
-    <tr><th>Skill</th><th>Total picked up</th><th>Total used</th><th>Use rate</th></tr>
-    ${skillRows}
-  </table>
-  <p style="color:#7d947f; font-size:12px;">"Use rate" is how often a picked-up skill actually gets activated before the run ends — useful for spotting skills people collect but forget to use.</p>
 
   <h2>Most recent runs <span style="color:#7d947f; font-weight:normal; font-size:12px;">(skill columns show Picked up / Used)</span></h2>
   <table>
     <tr>
-      <th>Time</th><th>Player</th><th>Mode</th><th>Character</th><th>Skin</th>
-      <th>Score</th><th>Coins</th><th>Zone</th><th>Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
-      <th>🦅 Double Jump</th><th>🔨 Crate Smasher</th><th>⏳ Slow-Mo</th>
+      <th>Time</th><th>Player</th><th>Character</th><th>Skin</th>
+      <th>Coins</th><th>Zone</th><th>Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
+      <th>🦅 Double Jump</th><th>🔨 Crate Smasher</th><th>⏳ Slow-Mo</th><th>Revive Method</th>
     </tr>
-    ${recentRows || '<tr><td colspan="15">No runs yet — go play!</td></tr>'}
+    ${recentRows || '<tr><td colspan="14">No runs yet — go play!</td></tr>'}
   </table>
 </body></html>`;
 }
