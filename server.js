@@ -20,8 +20,15 @@ const GAME_FILE = path.join(ROOT, 'crate-dash-3d.html');
 // ./data folder for running on your own machine.
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const EVENTS_FILE = path.join(DATA_DIR, 'events.jsonl');
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+// Set ADMIN_KEY (env var) to enable clearing data via the dashboard's
+// "Clear all data" button or POST /api/clear. Left unset, clearing is
+// disabled — a safer default once this is deployed publicly.
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
 if (!fs.existsSync(EVENTS_FILE)) fs.writeFileSync(EVENTS_FILE, '');
 
 function readEvents() {
@@ -30,6 +37,30 @@ function readEvents() {
   return raw.split('\n').map(line => {
     try { return JSON.parse(line); } catch (e) { return null; }
   }).filter(Boolean);
+}
+
+// Moves the current data to a timestamped backup file (never deletes
+// outright) and starts a fresh, empty events file.
+function clearEvents() {
+  const events = readEvents();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.join(BACKUP_DIR, `events-${stamp}.jsonl`);
+  fs.copyFileSync(EVENTS_FILE, backupPath);
+  fs.writeFileSync(EVENTS_FILE, '');
+  return { clearedCount: events.length, backupFile: path.basename(backupPath) };
+}
+
+// Global game settings (sound/vibration/shadows/tilt) that override every
+// player's local preference. A key is only present here when a researcher
+// has explicitly forced it via the dashboard — otherwise the game just uses
+// its normal built-in defaults.
+function readSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+  } catch (e) { return {}; }
+}
+function writeSettings(obj) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(obj, null, 2));
 }
 
 function sendJSON(res, status, obj) {
@@ -201,7 +232,108 @@ function buildDashboard(events) {
 </style></head>
 <body>
   <h1>Crate Dash 3D — Play Data</h1>
-  <p><a href="/">&larr; Back to game</a> &nbsp;|&nbsp; <a href="/api/events">Raw JSON</a></p>
+  <p><a href="/">&larr; Back to game</a> &nbsp;|&nbsp; <a href="/api/events">Raw JSON</a> &nbsp;|&nbsp; <a href="#" onclick="clearData(); return false;" style="color:#ff8080;">Clear all data</a> &nbsp;|&nbsp; <a href="#" onclick="openSettingsPanel(); return false;" style="color:#6dff9c;">⚙ Game settings (all players)</a></p>
+
+  <div id="settingsOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;">
+    <div style="background:#122a1c;border:1px solid #2c4436;border-radius:14px;padding:24px;width:320px;max-width:90vw;">
+      <h3 style="margin:0 0 4px;color:#6dff9c;">Game Settings</h3>
+      <p style="margin:0 0 16px;font-size:12px;color:#9fb4a6;">Forces this setting for every player's game, overriding their own device preference. "No override" leaves it up to each player (or its normal default).</p>
+      <div id="settingsFields" style="display:flex;flex-direction:column;gap:12px;font-size:13px;"></div>
+      <input type="password" id="settingsAdminKey" placeholder="Admin key" autocomplete="off" style="width:100%;margin-top:16px;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">
+      <div id="settingsMsg" style="font-size:12px;color:#ff8080;margin-top:6px;display:none;"></div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button onclick="saveSettingsPanel()" style="flex:1;padding:9px;border-radius:8px;border:none;background:#6dff9c;color:#0a1a12;font-weight:700;cursor:pointer;">Save</button>
+        <button onclick="closeSettingsPanel()" style="flex:1;padding:9px;border-radius:8px;border:1px solid #2c4436;background:transparent;color:#d7e6dc;cursor:pointer;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function clearData() {
+      const key = prompt('Enter admin key to clear all play data (a timestamped backup is kept on the server, but the dashboard will reset to empty):');
+      if (key === null) return;
+      if (!confirm('Really clear ALL play data? This cannot be undone from the dashboard.')) return;
+      try {
+        const res = await fetch('/api/clear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          alert('Cleared ' + data.clearedCount + ' events. Backup saved as ' + data.backupFile + '.');
+          location.reload();
+        } else {
+          alert('Could not clear data: ' + data.error);
+        }
+      } catch (e) {
+        alert('Request failed: ' + e.message);
+      }
+    }
+
+    const SETTINGS_DEFS = [
+      { key: 'sound', label: 'Sound' },
+      { key: 'haptics', label: 'Vibration' },
+      { key: 'shadows', label: 'Shadows (quality)' },
+      { key: 'tilt', label: 'Tilt steering' }
+    ];
+
+    async function openSettingsPanel() {
+      document.getElementById('settingsFields').innerHTML = SETTINGS_DEFS.map(d =>
+        '<label style="display:flex;justify-content:space-between;align-items:center;gap:10px;">' +
+          '<span>' + d.label + '</span>' +
+          '<select id="setf_' + d.key + '" style="padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">' +
+            '<option value="">No override</option>' +
+            '<option value="true">Force On</option>' +
+            '<option value="false">Force Off</option>' +
+          '</select>' +
+        '</label>'
+      ).join('');
+      document.getElementById('settingsMsg').style.display = 'none';
+      document.getElementById('settingsOverlay').style.display = 'flex';
+      try {
+        const res = await fetch('/api/settings');
+        const current = await res.json();
+        SETTINGS_DEFS.forEach(d => {
+          if (typeof current[d.key] === 'boolean') {
+            document.getElementById('setf_' + d.key).value = String(current[d.key]);
+          }
+        });
+      } catch (e) {}
+    }
+
+    function closeSettingsPanel() {
+      document.getElementById('settingsOverlay').style.display = 'none';
+    }
+
+    async function saveSettingsPanel() {
+      const key = document.getElementById('settingsAdminKey').value;
+      const msg = document.getElementById('settingsMsg');
+      const settings = {};
+      SETTINGS_DEFS.forEach(d => {
+        const v = document.getElementById('setf_' + d.key).value;
+        settings[d.key] = v === '' ? null : v === 'true';
+      });
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, settings })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          closeSettingsPanel();
+          alert('Saved. Every player will pick these up the next time they load the game.');
+        } else {
+          msg.textContent = data.error;
+          msg.style.display = 'block';
+        }
+      } catch (e) {
+        msg.textContent = 'Request failed: ' + e.message;
+        msg.style.display = 'block';
+      }
+    }
+  </script>
   <div class="stats">
     <div class="card"><b>${players.size}</b>Players</div>
     <div class="card"><b>${totalRuns}</b>Runs completed</div>
@@ -274,6 +406,66 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/events') {
     return sendJSON(res, 200, readEvents());
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/clear') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      if (!ADMIN_KEY) {
+        return sendJSON(res, 403, { ok: false, error: 'Clearing is disabled. Set the ADMIN_KEY environment variable to enable it.' });
+      }
+      let key = url.searchParams.get('key') || req.headers['x-admin-key'] || '';
+      if (!key) { try { key = JSON.parse(body || '{}').key || ''; } catch (e) {} }
+      if (key !== ADMIN_KEY) {
+        return sendJSON(res, 401, { ok: false, error: 'Wrong or missing admin key.' });
+      }
+      try {
+        const result = clearEvents();
+        sendJSON(res, 200, { ok: true, ...result });
+      } catch (e) {
+        sendJSON(res, 500, { ok: false, error: e.message });
+      }
+    });
+    return;
+  }
+
+  // Public: every player's game fetches this on load to pick up any
+  // researcher-forced overrides (sound/vibration/shadows/tilt).
+  if (req.method === 'GET' && url.pathname === '/api/settings') {
+    return sendJSON(res, 200, readSettings());
+  }
+
+  // Admin-key protected: the dashboard's "Game Settings" panel uses this to
+  // save overrides. Sending a key with value null/'' clears that override.
+  if (req.method === 'POST' && url.pathname === '/api/settings') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      if (!ADMIN_KEY) {
+        return sendJSON(res, 403, { ok: false, error: 'Settings control is disabled. Set the ADMIN_KEY environment variable to enable it.' });
+      }
+      let parsed;
+      try { parsed = JSON.parse(body || '{}'); } catch (e) {
+        return sendJSON(res, 400, { ok: false, error: 'invalid json' });
+      }
+      const key = parsed.key || url.searchParams.get('key') || req.headers['x-admin-key'] || '';
+      if (key !== ADMIN_KEY) {
+        return sendJSON(res, 401, { ok: false, error: 'Wrong or missing admin key.' });
+      }
+      try {
+        const current = readSettings();
+        const updated = { ...current, ...(parsed.settings || {}) };
+        for (const k of Object.keys(updated)) {
+          if (updated[k] === null || updated[k] === '') delete updated[k];
+        }
+        writeSettings(updated);
+        sendJSON(res, 200, { ok: true, settings: updated });
+      } catch (e) {
+        sendJSON(res, 500, { ok: false, error: e.message });
+      }
+    });
+    return;
   }
 
   if (req.method === 'GET' && url.pathname === '/dashboard') {

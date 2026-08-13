@@ -166,7 +166,6 @@
     <div id="hudRight">
       <div id="hudCoins">● 0</div>
       <div id="hudZone">Zone 1 · Sunlit Grove</div>
-      <button id="btnSettings" aria-label="Settings" style="pointer-events:auto;margin-top:7px;background:rgba(8,14,10,.55);border:1.5px solid rgba(255,255,255,.45);color:#fff;border-radius:10px;padding:4px 13px;font-size:17px;">⚙</button>
     </div>
   </div>
   <div id="powerBar" class="hidden" style="position:absolute;bottom:22px;left:0;right:0;display:flex;justify-content:center;gap:18px;z-index:6;pointer-events:none;">
@@ -182,7 +181,64 @@
   <div id="toast"></div>
   </div>
 
-  <div id="menu" class="overlay">
+  <div id="demographics" class="overlay">
+    <h1 style="font-size:22px;">Before you play</h1>
+    <div class="sub" style="max-width:340px;">Quick one-time survey — helps with research analysis. Takes 30 seconds.</div>
+    <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;margin-top:14px;text-align:left;">
+      <label style="font-size:12px;color:#9fb4a6;">Age
+        <input id="demoAge" type="number" min="10" max="100" placeholder="e.g. 21" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+      </label>
+      <label style="font-size:12px;color:#9fb4a6;">Gender
+        <select id="demoGender" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+          <option value="">Select...</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+          <option value="nonbinary">Non-binary</option>
+          <option value="prefer_not">Prefer not to say</option>
+        </select>
+      </label>
+      <label style="font-size:12px;color:#9fb4a6;">Nationality
+        <input id="demoNationality" type="text" placeholder="e.g. Portuguese" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+      </label>
+      <label style="font-size:12px;color:#9fb4a6;">Academic major / field of study
+        <input id="demoMajor" type="text" placeholder="e.g. Economics" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+      </label>
+      <label style="font-size:12px;color:#9fb4a6;">Experience with computer games
+        <select id="demoExperience" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+          <option value="">Select...</option>
+          <option value="none">Never play</option>
+          <option value="casual">Casual (a few times a month)</option>
+          <option value="regular">Regular (weekly)</option>
+          <option value="frequent">Frequent (daily)</option>
+        </select>
+      </label>
+      <label style="font-size:12px;color:#9fb4a6;">Hours of gaming per week
+        <input id="demoHours" type="number" min="0" max="100" placeholder="e.g. 5" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+      </label>
+      <label style="font-size:12px;color:#9fb4a6;">Playing on
+        <select id="demoDevice" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+          <option value="">Select...</option>
+          <option value="phone">Cell phone</option>
+          <option value="laptop">Laptop</option>
+          <option value="tablet">Tablet</option>
+          <option value="desktop">Desktop</option>
+        </select>
+      </label>
+      <label style="font-size:12px;color:#9fb4a6;">Group
+        <select id="demoGroup" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+          <option value="">Select...</option>
+          <option value="1">Group 1</option>
+          <option value="2">Group 2</option>
+          <option value="3">Group 3</option>
+          <option value="4">Group 4</option>
+        </select>
+      </label>
+    </div>
+    <div id="demoError" style="color:#ff8080;font-size:12px;margin-top:8px;display:none;">Please fill in all fields.</div>
+    <button class="btn" id="btnDemoSubmit" style="margin-top:16px;">Continue &rarr;</button>
+  </div>
+
+  <div id="menu" class="overlay hidden">
     <h1><span class="g1">CRATE</span> <span class="g2">DASH</span></h1>
     <div style="font-size:11px;letter-spacing:2px;color:#ffcf4d;margin-top:6px;text-transform:uppercase;">Forest Trail Edition</div>
     <div class="sub">Tilt your phone (or swipe) to steer · swipe ▲ or tap to jump<br>Hold <b>two fingers</b> on screen to slash crates & beasts with your sword<br>Beasts can't be jumped — cut them down · silver crates resist the sword — jump them!</div>
@@ -194,11 +250,6 @@
     <div>
       <button class="btn" id="btnPlay">▶ &nbsp;Play</button>
       <button class="btn alt" id="btnFullscreen">⛶ Full screen</button>
-      <button class="btn alt" id="btnShop">Shop</button>
-    </div>
-    <div>
-      <button class="btn alt" id="btnDaily" style="padding:11px 20px;font-size:15px;">🏆 Daily challenge</button>
-      <button class="btn alt" id="btnSettingsMenu" style="padding:11px 18px;font-size:15px;">⚙ Settings</button>
     </div>
     <div class="stat" id="menuBest">Best: <b>0</b></div>
   </div>
@@ -206,17 +257,11 @@
   <div id="gameover" class="overlay hidden">
     <div style="font-size:15px;letter-spacing:3px;color:#b8c9bf;text-transform:uppercase;">Wiped out in <span id="goZone">Zone 1</span></div>
     <div id="bigScore">0</div>
-    <div class="stat" id="goBest">Best: <b>0</b></div>
-    <div class="stat" style="margin-bottom:16px;">Coins earned: <b id="goCoins" style="color:#ffcf4d">0</b></div>
+    <div class="stat" id="goBest" style="margin-bottom:16px;">Best: <b>0</b></div>
     <div id="goDailyRank" class="stat hidden" style="margin-bottom:10px;color:#ffcf4d;font-weight:800;font-size:17px;"></div>
     <div>
       <button class="btn gold" id="btnReviveAd">📺 Revive · free ad</button>
       <button class="btn gold" id="btnRevive">⚡ Revive · 50 coins</button>
-    </div>
-    <div><button class="btn alt" id="btnDouble">📺 Double coins</button></div>
-    <div>
-      <button class="btn" id="btnRetry">↻ &nbsp;Retry</button>
-      <button class="btn alt" id="btnShare">Share</button>
     </div>
     <div class="stat"><button class="btn alt" id="btnMenu" style="padding:9px 20px;font-size:14px;">Menu</button></div>
   </div>
@@ -295,6 +340,19 @@ window.onerror = function (msg, src, line) {
   if (t) { t.textContent = '⚠ ' + msg + (line ? ' (line ' + line + ')' : ''); t.style.opacity = 1; }
   return false;
 };
+
+// Runs immediately, before the 3D engine below even starts loading, so the
+// survey (or the menu, if already completed) appears instantly on load.
+(function gateOnDemographics() {
+  var done = null;
+  try { done = localStorage.getItem('crateDashDemographics'); } catch (e) {}
+  if (done) {
+    var d = document.getElementById('demographics');
+    var m = document.getElementById('menu');
+    if (d) d.classList.add('hidden');
+    if (m) m.classList.remove('hidden');
+  }
+})();
 </script>
 <script>
 /**
@@ -384,6 +442,21 @@ try {
 function persistSave() {
   try { localStorage.setItem('crateDashMobileSaveV1', JSON.stringify(save)); } catch (e) {}
 }
+
+// ============ GLOBAL SETTINGS (server-controlled) ============
+// If the researcher has configured overrides via the dashboard's "Game
+// Settings" panel, apply them on top of this player's local save. This
+// keeps sound/vibration/shadows/tilt consistent across every player without
+// anyone needing to open an in-game settings menu (there isn't one anymore).
+fetch('/api/settings').then(r => r.ok ? r.json() : {}).then(cfg => {
+  if (!cfg || typeof cfg !== 'object') return;
+  let changed = false;
+  if (typeof cfg.sound === 'boolean') { save.sound = cfg.sound; changed = true; }
+  if (typeof cfg.haptics === 'boolean') { save.haptics = cfg.haptics; changed = true; }
+  if (typeof cfg.shadows === 'boolean') { save.shadows = cfg.shadows; changed = true; applyShadows(); }
+  if (typeof cfg.tilt === 'boolean') { save.tilt = cfg.tilt; changed = true; }
+  if (changed) persistSave();
+}).catch(() => {});
 
 // ============ TELEMETRY ============
 // Sends lightweight play-data events to a local collection server (see server.js).
@@ -926,7 +999,7 @@ function swordActive() { return swordHeld && swordEnergy > 0 && state === 'play'
 let lane = 1, targetX = 0, py = 0, vy = 0;
 let obstacles = [], coins = [], bursts = [], pups = [];
 let zone = 0;
-let speed, dist, score, runCoins, distToNext, revived, shakeT;
+let speed, dist, score, runCoins, distToNext, shakeT;
 let runTime = 0, jumps = 0, runMoves = 0, runJumps = 0;
 
 // ============ SMOOTH STREET CURVES ============
@@ -970,7 +1043,7 @@ function resetRun() {
   obstacles = []; coins = []; bursts = []; pups = [];
   lane = 1; targetX = 0; py = 0; vy = 0;
   swordEnergy = 100; swordHeld = false;
-  speed = 13; dist = 0; score = 0; runCoins = 0; revived = false; shakeT = 0;
+  speed = 13; dist = 0; score = 0; runCoins = 0; shakeT = 0;
   runTime = 0; jumps = 0; runMoves = 0; runJumps = 0;
   powers.dj = 0; powers.smash = 0; powers.slow = 0;
   inv.dj = 1; inv.smash = 1; inv.slow = 1;
@@ -1198,12 +1271,12 @@ function die() {
   player.visible = false;
   lastRunCoins = runCoins;
   save.coins += runCoins;
-  if (score > save.best) save.best = score;
+  if (lastRunCoins > save.best) save.best = lastRunCoins;
   if (mode === 'daily' && score > save.dailyBest) save.dailyBest = score;
   persistSave();
   trackEvent('game_over', {
     mode, score, coinsEarned: runCoins, zone: zone + 1,
-    character: save.character, skin: save.equipped,
+    character: save.character, skin: save.equipped, group: getPlayerGroup(),
     distance: Math.floor(dist), survivalTime: Number(runTime.toFixed(1)), jumps: runJumps, moves: runMoves,
     djGets: runSkillGets.dj, djUses: runSkillUses.dj,
     smashGets: runSkillGets.smash, smashUses: runSkillUses.smash,
@@ -1331,10 +1404,10 @@ function loop(now) {
         slashFx.material.opacity = 0.9; slashFx.scale.setScalar(1); slashFx.visible = true;
         if (o.beast) {
           burst(LANES[o.lane] + bend(o.z), 1.3, o.z, 0xff5a4d);
-          runCoins += 5; beep(520, 0.1, 'square', 0.07); haptic(22);
+          runCoins += 1; beep(520, 0.1, 'square', 0.07); haptic(22);
         } else {
           burst(LANES[o.lane] + bend(o.z), 1.2, o.z, 0xb5793a);
-          runCoins += 2; beep(460, 0.07, 'square', 0.05); haptic(12);
+          runCoins += 1; beep(460, 0.07, 'square', 0.05); haptic(12);
         }
         updateHUD();
         continue;
@@ -1343,7 +1416,7 @@ function loop(now) {
         if (powers.smash > 0 && !o.beast && !o.steel) {
           o.dead = true; scene.remove(o.mesh);
           burst(LANES[o.lane], 1.2, o.z, 0xb5793a);
-          runCoins += 5; beep(240, 0.12, 'square', 0.07); updateHUD();
+          runCoins += 1; beep(240, 0.12, 'square', 0.07); updateHUD();
         } else { die(); break; }
       }
       if (!o.passed && o.z > 1.2) {
@@ -1358,7 +1431,7 @@ function loop(now) {
       c.mesh.rotation.z = t * 5;
       if (!c.taken && c.lane === lane && Math.abs(c.z) < 1 && py < 2.2) {
         c.taken = true; scene.remove(c.mesh);
-        runCoins += 10; beep(1150, 0.06, 'sine', 0.05); updateHUD();
+        runCoins += 1; beep(1150, 0.06, 'sine', 0.05); updateHUD();
       }
     }
     coins = coins.filter(c => { if (c.taken || c.z > 14) { scene.remove(c.mesh); return c.taken ? false : false; } return true; });
@@ -1556,8 +1629,6 @@ function paintSettingsLive() {
   g_('stThL').style.left = px(-th) + '%';
   g_('stThR').style.left = px(th) + '%';
 }
-g_('btnSettings').onclick = openSettings;
-g_('btnSettingsMenu').onclick = openSettings;
 g_('btnSettingsClose').onclick = closeSettings;
 g_('stTilt').onclick = () => { save.tilt = !save.tilt; renderSettings(); };
 g_('stSound').onclick = () => { save.sound = !save.sound; renderSettings(); };
@@ -1601,7 +1672,7 @@ function paintPowerBar() {
 // ============ UI ============
 const $ = id => document.getElementById(id);
 function updateHUD() {
-  $('hudScore').textContent = score;
+  $('hudScore').textContent = '● ' + runCoins;
   $('hudCoins').textContent = '● ' + (save.coins + runCoins);
   $('hudZone').textContent = (mode === 'daily' ? '🏆 Daily · ' : '') + 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
 }
@@ -1646,17 +1717,39 @@ function showMenu() {
   $('powerBar').classList.add('hidden');
   $('menu').classList.remove('hidden');
 }
+// ============ REVIVE EXPERIMENT GROUPS ============
+// Each group sees a different combination of ad-watch time and coin cost
+// for reviving, so we can compare which revive framing students prefer.
+const REVIVE_GROUPS = {
+  1: { adSeconds: 20, coinCost: 10 },
+  2: { adSeconds: 20, coinCost: 40 },
+  3: { adSeconds: 5, coinCost: 10 },
+  4: { adSeconds: 5, coinCost: 40 }
+};
+function getPlayerGroup() {
+  try {
+    const raw = localStorage.getItem('crateDashDemographics');
+    if (!raw) return null;
+    const g = JSON.parse(raw).group;
+    return g ? Number(g) : null;
+  } catch (e) { return null; }
+}
+function getReviveConfig() {
+  const g = getPlayerGroup();
+  return REVIVE_GROUPS[g] || REVIVE_GROUPS[1];
+}
 function showGameOver() {
   releaseScreenAwake();
   persistSave();
-  $('bigScore').textContent = score;
-  $('goBest').innerHTML = (score >= save.best && score > 0 ? '🏆 New best!' : 'Best: <b>' + save.best + '</b>');
-  $('goCoins').textContent = lastRunCoins;
+  $('bigScore').textContent = lastRunCoins;
+  $('goBest').innerHTML = (lastRunCoins >= save.best && lastRunCoins > 0 ? '🏆 New best!' : 'Best: <b>' + save.best + '</b>');
   $('goZone').textContent = 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
-  const canRevive = !revived && mode === 'endless';
-  $('btnRevive').style.display = (canRevive && save.coins >= 50) ? 'inline-block' : 'none';
+  const canRevive = mode === 'endless';
+  const reviveCfg = getReviveConfig();
+  $('btnRevive').textContent = '⚡ Revive · ' + reviveCfg.coinCost + ' coins';
+  $('btnReviveAd').textContent = '📺 Revive · ' + reviveCfg.adSeconds + 's ad';
+  $('btnRevive').style.display = (canRevive && save.coins >= reviveCfg.coinCost) ? 'inline-block' : 'none';
   $('btnReviveAd').style.display = canRevive ? 'inline-block' : 'none';
-  $('btnDouble').style.display = lastRunCoins > 0 ? 'inline-block' : 'none';
   const dr = $('goDailyRank');
   if (mode === 'daily') { dr.classList.remove('hidden'); dr.textContent = '🏆 Daily rank: #' + dailyRank(); }
   else dr.classList.add('hidden');
@@ -1665,12 +1758,13 @@ function showGameOver() {
   $('gameover').classList.remove('hidden');
 }
 function doRevive(paid) {
-  if (paid) save.coins -= 50;
-  curveTarget = 0;
-  revived = true; runCoins = 0;
-  for (const o of obstacles) scene.remove(o.mesh);
-  obstacles = [];
-  distToNext = 25;
+  const reviveCfg = getReviveConfig();
+  if (paid) save.coins -= reviveCfg.coinCost;
+  trackEvent('revive_choice', {
+    group: getPlayerGroup(), reviveChoice: paid ? 'coins' : 'ad',
+    scoreAtChoice: score, zone: zone + 1
+  });
+  resetRun();
   player.visible = true;
   $('gameover').classList.add('hidden');
   $('hud').classList.remove('hidden');
@@ -1680,25 +1774,48 @@ function doRevive(paid) {
   beep(600, 0.1, 'triangle', 0.07); setTimeout(() => beep(900, 0.14, 'triangle', 0.06), 90);
 }
 $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
-$('btnRetry').onclick = () => {
-  deathsSinceAd++;
-  const showInter = runsPlayed >= 3 && deathsSinceAd >= 2 && !save.adsRemoved && !lastRewarded;
-  lastRewarded = false;
-  if (showInter) { deathsSinceAd = 0; showAd('inter', () => startGame(mode)); }
-  else startGame(mode);
+
+// ============ DEMOGRAPHICS SURVEY (one-time, before first play) ============
+// Initial show/hide of #demographics vs #menu already happened instantly at
+// the top of the page (before this heavy script even started loading), so
+// this only needs to wire up the submit button.
+(function initDemographics() {
+  $('btnDemoSubmit').onclick = () => {
+    const fields = {
+      age: document.getElementById('demoAge').value.trim(),
+      gender: document.getElementById('demoGender').value,
+      nationality: document.getElementById('demoNationality').value.trim(),
+      major: document.getElementById('demoMajor').value.trim(),
+      gamingExperience: document.getElementById('demoExperience').value,
+      gamingHoursPerWeek: document.getElementById('demoHours').value.trim(),
+      device: document.getElementById('demoDevice').value,
+      group: document.getElementById('demoGroup').value
+    };
+    const missing = Object.values(fields).some(v => v === '' || v === null || v === undefined);
+    if (missing) {
+      document.getElementById('demoError').style.display = 'block';
+      return;
+    }
+    document.getElementById('demoError').style.display = 'none';
+    try { localStorage.setItem('crateDashDemographics', JSON.stringify(fields)); } catch (e) {}
+    trackEvent('demographics', fields);
+    $('demographics').classList.add('hidden');
+    showMenu();
+  };
+})();
+
+$('btnMenu').onclick = () => {
+  // If the game-over screen offered a revive and the player declined by
+  // going to the menu instead, record that as their (non-)choice.
+  trackEvent('revive_choice', {
+    group: getPlayerGroup(), reviveChoice: null,
+    reviveWasOffered: mode === 'endless',
+    scoreAtChoice: score, zone: zone + 1
+  });
+  showMenu();
 };
-$('btnMenu').onclick = showMenu;
 $('btnRevive').onclick = () => doRevive(true);
-$('btnReviveAd').onclick = () => showAd('rewarded', () => { lastRewarded = true; doRevive(false); });
-$('btnDouble').onclick = () => showAd('rewarded', () => {
-  lastRewarded = true;
-  save.coins += lastRunCoins;
-  $('goCoins').textContent = lastRunCoins * 2;
-  $('btnDouble').style.display = 'none';
-  toast('Coins doubled: +' + lastRunCoins + ' 💰');
-  updateHUD();
-});
-$('btnDaily').onclick = openDaily;
+$('btnReviveAd').onclick = () => showAd('rewarded', () => { lastRewarded = true; doRevive(false); }, getReviveConfig().adSeconds);
 $('btnDailyBack').onclick = showMenu;
 $('btnDailyPlay').onclick = () => { enterFullscreen(); startGame('daily'); };
 $('btnShareRank').onclick = async () => {
@@ -1711,26 +1828,31 @@ $('btnShareRank').onclick = async () => {
 
 // ============ ADS (simulated) ============
 let adCb = null, adTick = null;
-function showAd(type, cb) {
+function showAd(type, cb, seconds) {
   if (type === 'inter' && save.adsRemoved) { cb && cb(); return; }
   adCb = cb;
   $('adview').classList.remove('hidden');
   $('btnAdClose').classList.add('hidden');
-  $('btnAdClose').textContent = type === 'rewarded' ? 'Collect reward ✓' : 'Close ✕';
-  let t = type === 'rewarded' ? 5 : 3;
+  let t = seconds != null ? seconds : (type === 'rewarded' ? 5 : 3);
   $('adTimer').textContent = t;
   clearInterval(adTick);
   adTick = setInterval(() => {
     t--;
-    if (t <= 0) { clearInterval(adTick); $('adTimer').textContent = '✓'; $('btnAdClose').classList.remove('hidden'); }
-    else $('adTimer').textContent = t;
+    if (t <= 0) {
+      clearInterval(adTick);
+      $('adTimer').textContent = '✓';
+      finishAd();
+    } else {
+      $('adTimer').textContent = t;
+    }
   }, 1000);
 }
-$('btnAdClose').onclick = () => {
+function finishAd() {
   $('adview').classList.add('hidden');
   const cb = adCb; adCb = null;
   cb && cb();
-};
+}
+$('btnAdClose').onclick = finishAd;
 
 // ============ DAILY CHALLENGE ============
 const BOTNAMES = ['TurboLisboa', 'CrateKing', 'MilanRunner', 'PixelPedro', 'JumpMaria', 'SofiaSpeed', 'DashDiego', 'NeonRita', 'BoxHopper'];
@@ -1755,15 +1877,7 @@ function openDaily() {
     + '"><span>#' + (i + 1) + ' &nbsp;' + r.n + '</span><span>' + r.s + 'm</span></div>').join('');
 }
 
-$('btnShop').onclick = openShop;
 $('btnShopBack').onclick = showMenu;
-$('btnShare').onclick = async () => {
-  const txt = 'I ran ' + score + 'm in Crate Dash 3D 🏃 Can you beat me?';
-  try {
-    if (navigator.share) await navigator.share({ text: txt });
-    else { await navigator.clipboard.writeText(txt); toast('Score copied — paste it anywhere!'); }
-  } catch (e) {}
-};
 function openShop() {
   state = 'shop';
   $('menu').classList.add('hidden');
@@ -1837,7 +1951,15 @@ buildCharacter(save.character);
 renderChars();
 rebuildDecos();
 resetRun();
-showMenu();
+// Only jump straight to the menu if the demographics survey was already
+// completed in a previous visit. Otherwise leave the demographics screen
+// showing (it's already the first thing visible on page load) — the
+// survey's own submit handler calls showMenu() once it's done.
+(function () {
+  let demoDone = null;
+  try { demoDone = localStorage.getItem('crateDashDemographics'); } catch (e) {}
+  if (demoDone) showMenu();
+})();
 requestAnimationFrame(loop);
 </script>
 </body>
