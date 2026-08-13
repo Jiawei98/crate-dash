@@ -456,7 +456,7 @@ const SKINS = [
   { id: 'gold',   name: 'Solid gold', color: 0xffcf4d, css: '#ffcf4d', price: 1500 },
   { id: 'shadow', name: 'Shadow',  color: 0x2c2c34, css: '#2c2c34', price: 2500 },
 ];
-const DEFAULT_SAVE = { coins: 150, best: 0, owned: { mint: true }, equipped: 'mint', adsRemoved: false, bundleBought: false, dailyBest: -1, character: 'dax', tilt: true, tiltSens: 7, sound: true, haptics: true, shadows: true };
+const DEFAULT_SAVE = { coins: 50, best: 0, owned: { mint: true }, equipped: 'mint', adsRemoved: false, bundleBought: false, dailyBest: -1, character: 'dax', tilt: true, tiltSens: 7, sound: true, haptics: true, shadows: true };
 let save = { ...DEFAULT_SAVE, owned: { ...DEFAULT_SAVE.owned } };
 try {
   const saved = JSON.parse(localStorage.getItem('crateDashMobileSaveV1') || 'null');
