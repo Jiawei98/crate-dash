@@ -408,6 +408,26 @@ const server = http.createServer((req, res) => {
     return sendJSON(res, 200, { token: readResetToken() });
   }
 
+  // Lightweight check only — no side effects. Used by the game's own
+  // "Restart (admin only)" link on the "experiment ended" screen, so a
+  // teacher can reset just one device's local progress without touching
+  // the dashboard or anyone else's data.
+  if (req.method === 'POST' && url.pathname === '/api/verify-admin-key') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      if (!ADMIN_KEY) {
+        return sendJSON(res, 403, { ok: false, error: 'Restart is disabled. Set the ADMIN_KEY environment variable to enable it.' });
+      }
+      let parsed;
+      try { parsed = JSON.parse(body || '{}'); } catch (e) {
+        return sendJSON(res, 400, { ok: false, error: 'invalid json' });
+      }
+      sendJSON(res, 200, { ok: parsed.key === ADMIN_KEY });
+    });
+    return;
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/clear') {
     let body = '';
     req.on('data', chunk => { body += chunk; if (body.length > 1e4) req.destroy(); });
