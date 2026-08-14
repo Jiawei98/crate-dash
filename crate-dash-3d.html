@@ -228,11 +228,8 @@
 
   <div id="experimentEnded" class="overlay hidden">
     <div style="font-size:40px;">🏁</div>
-    <h1 style="font-size:20px;margin-top:10px;">Your experiment has ended</h1>
-    <div class="sub" style="margin-top:8px;max-width:320px;">Thanks for playing! You can close this page now.</div>
-    <div style="margin-top:28px;">
-      <a href="#" onclick="openAdminRestart(); return false;" style="color:#5a6b5c;font-size:11px;">Restart (admin only)</a>
-    </div>
+    <h1 style="font-size:20px;margin-top:10px;">Thank you for participating!</h1>
+    <div class="sub" style="margin-top:8px;max-width:320px;">Your experiment has ended. You can close this page now.</div>
   </div>
 
   <div id="menu" class="overlay hidden">
@@ -265,7 +262,7 @@
     <div><button class="btn" id="btnFinish" style="display:none;margin-top:10px;">✓ I'm done</button></div>
     <div id="goFinished" class="hidden" style="margin-top:6px;">
       <div style="font-size:26px;">🎉</div>
-      <div style="font-size:16px;color:#6dff9c;font-weight:800;margin-top:6px;">All done — thanks for playing!</div>
+      <div style="font-size:16px;color:#6dff9c;font-weight:800;margin-top:6px;">Thank you for participating!</div>
       <div id="goFinishedSummary" style="font-size:13px;color:#9fb4a6;margin-top:8px;"></div>
       <div style="font-size:12px;color:#7d947f;margin-top:10px;">You can close this tab now.</div>
     </div>
@@ -1949,9 +1946,10 @@ function applyGameOverButtons() {
   }
 }
 // A deliberate closing action instead of just leaving the player staring at
-// a dead-end "time's up" screen — swaps in a small thank-you card with a
-// personal summary. Fires one last event so the data clearly shows they
-// reached and acknowledged the end, rather than just vanishing mid-run.
+// a dead-end "time's up" screen — swaps in a thank-you card with a personal
+// summary. Fires one last event so the data clearly shows they reached and
+// acknowledged the end, rather than just vanishing mid-run. Does NOT try to
+// close the tab — that's the player's own call, not something to force.
 function finishSession() {
   if (sessionFinished) return;
   sessionFinished = true;
@@ -1966,10 +1964,6 @@ function finishSession() {
   $('goFinishedSummary').textContent = 'You made ' + totalRealAttempts + ' attempt' + (totalRealAttempts === 1 ? '' : 's') + ' · best single run: ' + save.best + ' coins';
   $('goFinished').classList.remove('hidden');
   beep(500, 0.1, 'sine', 0.06); setTimeout(() => beep(750, 0.14, 'sine', 0.06), 110); setTimeout(() => beep(1000, 0.18, 'sine', 0.06), 220);
-  // Only works if this tab was opened via script (window.open) — normal
-  // browser tabs block script-initiated closing for security, so this is a
-  // harmless best-effort attempt, not something to rely on.
-  try { window.close(); } catch (e) {}
 }
 $('btnFinish').onclick = finishSession;
 // Lets a teacher/admin reset THIS device's local progress (coins, group,
@@ -2005,6 +1999,15 @@ async function openAdminRestart() {
     alert('Request failed: ' + e.message);
   }
 }
+// No visible button anywhere in the UI — players should never see a restart
+// option. Ctrl+Alt+R (works at any point, any screen) brings up the same
+// password-protected restart flow instead.
+window.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.altKey && e.code === 'KeyR') {
+    e.preventDefault();
+    openAdminRestart();
+  }
+});
 function showGameOver() {
   releaseScreenAwake();
   persistSave();
