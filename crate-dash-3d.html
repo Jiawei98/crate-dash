@@ -226,6 +226,15 @@
     <button class="btn" id="btnDemoSubmit" style="margin-top:16px;">Continue &rarr;</button>
   </div>
 
+  <div id="experimentEnded" class="overlay hidden">
+    <div style="font-size:40px;">🏁</div>
+    <h1 style="font-size:20px;margin-top:10px;">Your experiment has ended</h1>
+    <div class="sub" style="margin-top:8px;max-width:320px;">Thanks for playing! You can close this page now.</div>
+    <div style="margin-top:28px;">
+      <a href="#" onclick="openAdminRestart(); return false;" style="color:#5a6b5c;font-size:11px;">Restart (admin only)</a>
+    </div>
+  </div>
+
   <div id="menu" class="overlay hidden">
     <h1><span class="g1">CRATE</span> <span class="g2">DASH</span></h1>
     <div style="font-size:11px;letter-spacing:2px;color:#ffcf4d;margin-top:6px;text-transform:uppercase;">Forest Trail Edition</div>
@@ -252,7 +261,14 @@
       <button class="btn gold" id="btnRevive">⚡ Revive · 50 coins</button>
       <button class="btn" id="btnStartReal" style="display:none;">🏁 Start the real challenge</button>
     </div>
-    <div id="goTimeUp" class="stat hidden" style="margin-top:14px;color:#9fb4a6;">⏱ Time's up — thanks for playing!</div>
+    <div id="goTimeUp" class="stat hidden" style="margin-top:14px;color:#9fb4a6;">⏱ Time's up!</div>
+    <div><button class="btn" id="btnFinish" style="display:none;margin-top:10px;">✓ I'm done</button></div>
+    <div id="goFinished" class="hidden" style="margin-top:6px;">
+      <div style="font-size:26px;">🎉</div>
+      <div style="font-size:16px;color:#6dff9c;font-weight:800;margin-top:6px;">All done — thanks for playing!</div>
+      <div id="goFinishedSummary" style="font-size:13px;color:#9fb4a6;margin-top:8px;"></div>
+      <div style="font-size:12px;color:#7d947f;margin-top:10px;">You can close this tab now.</div>
+    </div>
   </div>
 
   <div id="shop" class="overlay hidden">
@@ -337,6 +353,8 @@ window.onerror = function (msg, src, line) {
           localStorage.removeItem('crateDashDemographics');
           localStorage.removeItem('crateDashSessionStartTs');
           localStorage.removeItem('crateDashPlayerGroup');
+          localStorage.removeItem('crateDashGamePhase');
+          localStorage.removeItem('crateDashSessionFinished');
         } catch (e) {}
       }
       if (serverToken) { try { localStorage.setItem('crateDashResetToken', serverToken); } catch (e) {} }
@@ -354,6 +372,23 @@ window.onerror = function (msg, src, line) {
     var m = document.getElementById('menu');
     if (d) d.classList.add('hidden');
     if (m) m.classList.remove('hidden');
+  }
+})();
+
+// If this browser already finished its real session (whether they tapped
+// "I'm done" or just closed the tab once time ran out), always show the
+// "experiment ended" screen on every future load — no way back into the
+// game from here except the admin-password restart below.
+(function gateOnFinished() {
+  var finished = null;
+  try { finished = localStorage.getItem('crateDashSessionFinished'); } catch (e) {}
+  if (finished === 'true') {
+    var d = document.getElementById('demographics');
+    var m = document.getElementById('menu');
+    var f = document.getElementById('experimentEnded');
+    if (d) d.classList.add('hidden');
+    if (m) m.classList.add('hidden');
+    if (f) f.classList.remove('hidden');
   }
 })();
 </script>
@@ -614,6 +649,8 @@ function trackEvent(type, data) {
 }
 let runEndRecorded = false;
 let reviveChoiceRecordedForThisLife = false;
+let totalRealAttempts = 0;
+let sessionFinished = false;
 function recordAbandonedIfMidRun() {
   if (document.hidden && !runEndRecorded && (state === 'play' || state === 'ready')) {
     runEndRecorded = true;
@@ -1402,6 +1439,7 @@ function recordGameOver(endReason) {
   lastRunCoins = runCoins;
   save.coins += runCoins;
   if (lastRunCoins > save.best) save.best = lastRunCoins;
+  if (gamePhase === 'real') totalRealAttempts++;
   persistSave();
   trackEvent('game_over', {
     mode, score, coinsEarned: runCoins, zone: zone + 1,
@@ -1886,11 +1924,13 @@ function recordDeclinedRevive() {
 // Shared by showGameOver() (a fresh death) and updateTimerDisplay() (time
 // runs out while already sitting on this screen deciding) — one place that
 // decides which of the three possible screens to show: normal revive
-// choice, "practice's over, tap to start the real round", or "time's up,
-// thanks for playing" (only for the real phase — practice never ends the
-// whole game, it just moves on).
+// choice, "practice's over, tap to start the real round", or "time's up" +
+// a Finish button (only for the real phase — practice never ends the whole
+// game, it just moves on).
 function applyGameOverButtons() {
+  if (sessionFinished) return;
   const practiceEnding = timeUp && gamePhase === 'practice';
+  const realEnding = timeUp && gamePhase === 'real';
   const canRevive = mode === 'endless' && !timeUp;
   const reviveCfg = getReviveConfig();
   $('btnRevive').textContent = '⚡ Revive · ' + reviveCfg.coinCost + ' coins';
@@ -1898,10 +1938,71 @@ function applyGameOverButtons() {
   $('btnRevive').style.display = (canRevive && save.coins >= reviveCfg.coinCost) ? 'inline-block' : 'none';
   $('btnReviveAd').style.display = canRevive ? 'inline-block' : 'none';
   $('btnStartReal').style.display = practiceEnding ? 'inline-block' : 'none';
-  $('goTimeUp').classList.toggle('hidden', !(timeUp && gamePhase !== 'practice'));
+  $('goTimeUp').classList.toggle('hidden', !realEnding);
+  $('btnFinish').style.display = realEnding ? 'inline-block' : 'none';
+  if (realEnding) {
+    try { localStorage.setItem('crateDashSessionFinished', 'true'); } catch (e) {}
+  }
   if (timeUp && !reviveChoiceRecordedForThisLife) {
     reviveChoiceRecordedForThisLife = true;
     recordDeclinedRevive();
+  }
+}
+// A deliberate closing action instead of just leaving the player staring at
+// a dead-end "time's up" screen — swaps in a small thank-you card with a
+// personal summary. Fires one last event so the data clearly shows they
+// reached and acknowledged the end, rather than just vanishing mid-run.
+function finishSession() {
+  if (sessionFinished) return;
+  sessionFinished = true;
+  trackEvent('session_finished', {
+    group: getPlayerGroup(), totalRealAttempts, bestCoins: save.best, coinBalance: save.coins
+  });
+  $('btnRevive').style.display = 'none';
+  $('btnReviveAd').style.display = 'none';
+  $('btnStartReal').style.display = 'none';
+  $('goTimeUp').classList.add('hidden');
+  $('btnFinish').style.display = 'none';
+  $('goFinishedSummary').textContent = 'You made ' + totalRealAttempts + ' attempt' + (totalRealAttempts === 1 ? '' : 's') + ' · best single run: ' + save.best + ' coins';
+  $('goFinished').classList.remove('hidden');
+  beep(500, 0.1, 'sine', 0.06); setTimeout(() => beep(750, 0.14, 'sine', 0.06), 110); setTimeout(() => beep(1000, 0.18, 'sine', 0.06), 220);
+  // Only works if this tab was opened via script (window.open) — normal
+  // browser tabs block script-initiated closing for security, so this is a
+  // harmless best-effort attempt, not something to rely on.
+  try { window.close(); } catch (e) {}
+}
+$('btnFinish').onclick = finishSession;
+// Lets a teacher/admin reset THIS device's local progress (coins, group,
+// demographics answer, phase, finished flag) so this one person can redo
+// the experiment. Their playerId is kept unchanged on purpose — so their
+// original attempt and their redo both stay linked to the same anonymous
+// id in the data, rather than looking like two different people.
+async function openAdminRestart() {
+  const key = prompt("Enter the admin password to restart this device's experiment (clears this browser's saved coins, group, and survey answer):");
+  if (key === null) return;
+  try {
+    const res = await fetch('/api/verify-admin-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      try {
+        localStorage.removeItem('crateDashMobileSaveV1');
+        localStorage.removeItem('crateDashDemographics');
+        localStorage.removeItem('crateDashSessionStartTs');
+        localStorage.removeItem('crateDashPlayerGroup');
+        localStorage.removeItem('crateDashGamePhase');
+        localStorage.removeItem('crateDashSessionFinished');
+      } catch (e) {}
+      alert('Restarted — reloading now.');
+      location.reload();
+    } else {
+      alert(data.error || 'Wrong password.');
+    }
+  } catch (e) {
+    alert('Request failed: ' + e.message);
   }
 }
 function showGameOver() {
@@ -2072,12 +2173,15 @@ renderChars();
 rebuildDecos();
 resetRun();
 // Only jump straight to the menu if the demographics survey was already
-// completed in a previous visit. Otherwise leave the demographics screen
-// showing (it's already the first thing visible on page load) — the
-// survey's own submit handler calls showMenu() once it's done.
+// completed in a previous visit, AND the session isn't already finished.
+// Otherwise leave the demographics screen showing (it's already the first
+// thing visible on page load) — the survey's own submit handler calls
+// showMenu() once it's done.
 (function () {
-  let demoDone = null;
+  let demoDone = null, finished = null;
   try { demoDone = localStorage.getItem('crateDashDemographics'); } catch (e) {}
+  try { finished = localStorage.getItem('crateDashSessionFinished'); } catch (e) {}
+  if (finished === 'true') { sessionFinished = true; return; }
   if (demoDone) showMenu();
 })();
 requestAnimationFrame(loop);
