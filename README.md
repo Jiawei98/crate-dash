@@ -23,9 +23,8 @@ instead of `localhost`, e.g. `http://192.168.1.23:3000` (find your IP with
 `ipconfig` on Windows or `ifconfig`/`ipconfig getifaddr en0` on Mac). Their
 plays will show up in the same dashboard.
 
-## Clearing data (for practice runs before the real experiment)
-Useful if students play once as a demo/practice in class, and you want a
-clean slate before the real experiment starts.
+## Clearing data
+Useful if you want a clean slate before a new class/session.
 
 **1. Enable it** (off by default, for safety):
 - Locally: run with `ADMIN_KEY=yourpassword node server.js` instead of the
@@ -38,61 +37,93 @@ enter the key when prompted, confirm. The live data resets to empty — but a
 full backup is saved first to `data/backups/` (never deleted automatically),
 so nothing is ever actually lost.
 
-**This also resets every player, not just the server's records.** Coins and
-the demographics answer are stored in each player's own browser
-(`localStorage`), so clearing data on the server alone wouldn't normally
-touch them. To handle that, the game checks a small "reset token" from the
-server every time it loads; clearing data changes that token, so the next
-time each player opens the link, their browser notices, wipes its own saved
-coins and demographics answer, and shows the survey again — like a brand new
-visitor. No redeploy or action needed on their end.
+**This also resets every player, not just the server's records.** Coins, the
+demographics answer, the assigned experiment group, and the practice/real
+clock are all stored in each player's own browser (`localStorage`), so
+clearing data on the server alone wouldn't normally touch them. To handle
+that, the game checks a small "reset token" from the server every time it
+loads; clearing data changes that token, so the next time each player opens
+the link, their browser notices and wipes all of that — showing the survey
+again and drawing a fresh random group, like a brand new visitor. No redeploy
+or action needed on their end.
 
 ## Controlling settings for everyone (Dashboard → "Game settings")
-There's no more in-game Settings menu — sound, vibration, shadow quality, and
-tilt steering are now controlled centrally from the dashboard instead, so
-every player gets the same, consistent experience (useful for keeping the
-experiment's conditions uniform, or just for keeping a classroom quiet).
+There's no more in-game Settings menu — sound, vibration, shadow quality,
+tilt steering, the practice window length, the real session time limit, and
+each group's revive pricing are all controlled centrally from the dashboard
+instead, so every player gets the same, consistent experience.
 
 Uses the same `ADMIN_KEY` as clearing data (see above — set it first). Then
-on `/dashboard`, click **"⚙ Game settings (all players)"**, set each toggle
-to Force On / Force Off / No override, enter the admin key, Save. Every
-player's game picks up the new values automatically the next time they load
-the page — nothing needs to be redeployed. "No override" means that setting
-just falls back to the game's normal default (all on).
+on `/dashboard`, click **"⚙ Game settings (all players)"**:
+- Sound / Vibration / Shadows / Tilt: Force On / Force Off / No override
+  (falls back to the game's normal default).
+- **Practice window (minutes)**: how long the practice phase lasts before
+  automatically moving into the real session. Leave blank to skip practice
+  entirely — players go straight into the real, counted session.
+- **Real session time limit (minutes)**: how long the real phase lasts once
+  it starts. Leave blank for no limit.
+- **Revive pricing by group**: the ad-watch seconds and coin cost for each
+  of the 4 experiment groups.
+
+Save, and every player's game picks up the new values automatically the next
+time they load the page — nothing needs to be redeployed.
 
 ## What gets tracked
 - `demographics`: a one-time survey shown before a player's first run — age,
   gender, nationality, academic major, gaming experience, hours of gaming per
-  week, device (phone/laptop/tablet), and **group (1-4)**. Stored once per
-  browser (in `localStorage`), so returning players aren't asked again.
-- `game_start`: mode, character, skin, player id. Fired exactly **once** per
-  player — there's no way back to the main menu once someone clicks Play, so
-  this can't happen more than once per browser.
+  week, and device (phone/laptop/tablet). Stored once per browser
+  (`localStorage`), so returning players aren't asked again.
+- `game_start`: mode, character, skin, player id, and `phase`. Fired once at
+  the very start (phase `'practice'`, or `'real'` directly if no practice
+  window is configured), and fired again when a player moves from practice
+  into the real session (phase `'real'`) — so there are at most two per
+  player. There's no way back to the main menu once someone clicks Play, so
+  it can't happen more than that.
 - `game_over`: fired on **every death**, including ones a player then revives
   from — not just their final death. Carries score, coins earned, zone
   reached, distance traveled, survival time, jump/move counts, character,
-  skin, **group**, and that attempt's skill pickups/uses. Also carries
-  `endReason` (`'died'` normally, or `'left_page'` if they closed the tab or
-  locked the screen mid-run instead of actually dying).
-- `powerup_get` / `powerup_use`: an individual log entry each time a skill is
-  picked up or activated.
+  skin, **group**, **phase**, that attempt's Crate Smasher pickups/uses, and
+  `endReason`: `'died'` (a real collision), `'time_out'` (the practice window
+  or the real time limit ran out mid-attempt), or `'left_page'` (they closed
+  the tab or locked the screen instead of actually dying).
+- `powerup_get` / `powerup_use`: an individual log entry each time the Crate
+  Smasher (the only power-up in the game) is picked up or activated. Carries
+  `phase` too.
 - `revive_choice`: fired right after each `game_over`, once the player acts —
   whether they revived with a free ad, revived by spending coins, or the
-  session ended without a revive (time ran out). Fields: `group`,
-  `reviveChoice` (`'ad'` / `'coins'` / `null`), `scoreAtChoice`, `zone`, and
-  — only when `reviveChoice` is `null` — `reviveWasOffered` (whether a revive
-  was actually available at that point, e.g. false once the time limit hits).
+  attempt ended without a revive (declined, or time ran out). Fields:
+  `group`, `phase`, `reviveChoice` (`'ad'` / `'coins'` / `null`),
+  `scoreAtChoice`, `zone`, and — only when `reviveChoice` is `null` —
+  `reviveWasOffered` (whether a revive was actually available at that point).
 
 **Each row in the dashboard's "Most recent runs" table is one attempt** (one
 life), not one player — a player's first try is row 1, and every revive after
-that adds another row with the same `sessionId` but a higher "Attempt #".
-This is possible because each player only ever plays once (no menu to
-restart from), so every attempt anyone makes is naturally part of their one
-continuous session.
+that adds another row with the same `sessionId` but a higher "Attempt #",
+continuing across both the practice and real phases. This is possible because
+each player only ever plays once (no menu to restart from), so every attempt
+anyone makes is naturally part of their one continuous session. The summary
+cards at the top of the dashboard only count **real**-phase attempts, so
+practice play doesn't skew the numbers — but the attempts table itself shows
+both phases (with a Phase column) so you can still spot-check practice
+behavior if you want to.
+
+### Practice → real
+Every player goes through the configured practice window first — playing
+normally, revives and all, at the same per-group pricing as the real session
+— then automatically gets prompted to start the real, counted session once
+that window elapses (a "🏁 Start the real challenge" button replaces the
+revive options on their next "you died" screen). Starting the real session
+resets their coin balance to the default starting amount and resets their
+personal best, so the group's coin-cost manipulation means the same thing
+for everyone regardless of how practice went. Their assigned group carries
+over unchanged.
 
 ### The revive experiment (Group 1-4)
-Each player is randomly self-assigned a group in the demographics survey.
-Groups see different revive pricing on the "you died" screen:
+Each player is assigned to a group the moment their anonymous player ID is
+first created — a pure random draw (`Math.random()`, 25% each), completely
+independent of anything they fill in on the survey. The assignment is drawn
+once and reused for both the practice window and the real session. Default
+pricing (editable from the dashboard, see above):
 
 | Group | Free-ad watch time | Coin cost |
 |---|---|---|
@@ -104,20 +135,18 @@ Groups see different revive pricing on the "you died" screen:
 To see which revive option people preferred under each pricing combination,
 join `game_over` and `revive_choice` events by `sessionId` (or just filter
 `revive_choice` events directly — they already carry `group` and
-`reviveChoice`). The revive-price constants live near the top of the
-`showGameOver` function in `crate-dash-3d.html` if you want to change them
-(`REVIVE_GROUPS`).
+`reviveChoice`).
 
-### Time limit
-Set a per-player time limit (e.g. 5 minutes) from the dashboard's "⚙ Game
-settings" panel — same place as the sound/vibration/shadows toggles, just
-enter a number of minutes (or leave blank for no limit). The clock starts
-the moment each player clicks Play and counts down continuously (through
-ad-watching and revive decisions too) — a countdown shows during gameplay and
-on the "you died" screen. Once time runs out, revives stop being offered; if
-they're mid-run when it happens, that run ends immediately. Clearing data
-from the dashboard also resets everyone's clock along with their coins and
-demographics answer.
+### Time limits
+Both the practice window and the real session time limit are set from the
+dashboard's "⚙ Game settings" panel (see above) — enter minutes, or leave
+blank to skip that limit entirely. Each clock starts the moment its phase
+begins and counts down continuously (through ad-watching and revive
+decisions too) — a countdown shows during gameplay and on the "you died"
+screen. Once a limit runs out, that phase ends (practice moves the player
+into a "start the real challenge" prompt; the real limit running out ends the
+session for good). Clearing data from the dashboard also resets everyone's
+clock along with their coins, demographics answer, and group.
 
 Each player gets an anonymous ID stored in their browser (`localStorage`), so
 you can see repeat plays from the same person without collecting anything

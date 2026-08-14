@@ -155,7 +155,6 @@
 </head>
 <body>
 <div id="wrap">
-  <div id="slowfx" style="position:absolute;inset:0;pointer-events:none;background:rgba(130,90,255,0.13);opacity:0;transition:opacity .25s;z-index:4;"></div>
   <div id="vignette"></div>
   <div id="hud" class="hidden">
     <div id="hudScore">0</div>
@@ -170,9 +169,7 @@
     </div>
   </div>
   <div id="powerBar" class="hidden" style="position:absolute;bottom:22px;left:0;right:0;display:flex;justify-content:center;gap:18px;z-index:6;pointer-events:none;">
-    <button class="pw" id="pw_dj">🦅<span class="cnt" id="pwn_dj">×1</span></button>
     <button class="pw" id="pw_smash">🔨<span class="cnt" id="pwn_smash">×1</span></button>
-    <button class="pw" id="pw_slow">⏳<span class="cnt" id="pwn_slow">×1</span></button>
   </div>
 
   <div id="mobileTip">Tilt to steer · swipe ▲ jump · hold 2 fingers = ⚔ sword</div>
@@ -224,15 +221,6 @@
           <option value="tablet">Tablet</option>
         </select>
       </label>
-      <label style="font-size:12px;color:#9fb4a6;">Group
-        <select id="demoGroup" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
-          <option value="">Select...</option>
-          <option value="1">Group 1</option>
-          <option value="2">Group 2</option>
-          <option value="3">Group 3</option>
-          <option value="4">Group 4</option>
-        </select>
-      </label>
     </div>
     <div id="demoError" style="color:#ff8080;font-size:12px;margin-top:8px;display:none;">Please fill in all fields.</div>
     <button class="btn" id="btnDemoSubmit" style="margin-top:16px;">Continue &rarr;</button>
@@ -262,6 +250,7 @@
     <div>
       <button class="btn gold" id="btnReviveAd">📺 Revive · free ad</button>
       <button class="btn gold" id="btnRevive">⚡ Revive · 50 coins</button>
+      <button class="btn" id="btnStartReal" style="display:none;">🏁 Start the real challenge</button>
     </div>
     <div id="goTimeUp" class="stat hidden" style="margin-top:14px;color:#9fb4a6;">⏱ Time's up — thanks for playing!</div>
   </div>
@@ -347,6 +336,7 @@ window.onerror = function (msg, src, line) {
           localStorage.removeItem('crateDashMobileSaveV1');
           localStorage.removeItem('crateDashDemographics');
           localStorage.removeItem('crateDashSessionStartTs');
+          localStorage.removeItem('crateDashPlayerGroup');
         } catch (e) {}
       }
       if (serverToken) { try { localStorage.setItem('crateDashResetToken', serverToken); } catch (e) {} }
@@ -462,6 +452,7 @@ function persistSave() {
 // keeps sound/vibration/shadows/tilt consistent across every player without
 // anyone needing to open an in-game settings menu (there isn't one anymore).
 let timeLimitMinutes = null;
+let practiceWindowMinutes = null;
 fetch('/api/settings').then(r => r.ok ? r.json() : {}).then(cfg => {
   if (!cfg || typeof cfg !== 'object') return;
   let changed = false;
@@ -470,13 +461,37 @@ fetch('/api/settings').then(r => r.ok ? r.json() : {}).then(cfg => {
   if (typeof cfg.shadows === 'boolean') { save.shadows = cfg.shadows; changed = true; applyShadows(); }
   if (typeof cfg.tilt === 'boolean') { save.tilt = cfg.tilt; changed = true; }
   if (typeof cfg.timeLimitMinutes === 'number' && cfg.timeLimitMinutes > 0) { timeLimitMinutes = cfg.timeLimitMinutes; }
+  if (typeof cfg.practiceWindowMinutes === 'number' && cfg.practiceWindowMinutes > 0) { practiceWindowMinutes = cfg.practiceWindowMinutes; }
+  if (cfg.revive && typeof cfg.revive === 'object') {
+    for (const gid of ['1', '2', '3', '4']) {
+      if (cfg.revive[gid] && typeof cfg.revive[gid] === 'object') {
+        REVIVE_GROUPS[gid] = { ...REVIVE_GROUPS[gid], ...cfg.revive[gid] };
+      }
+    }
+  }
   if (changed) persistSave();
 }).catch(() => {});
 
+// ============ PRACTICE → REAL PHASE ============
+// Every player goes through a practice window first (if the researcher has
+// configured one), then automatically moves into the real, counted session.
+// Phase is persisted so a reload doesn't lose track of which one they're in.
+let gamePhase = (function () {
+  try { return localStorage.getItem('crateDashGamePhase') || 'practice'; } catch (e) { return 'practice'; }
+})();
+function setGamePhase(p) {
+  gamePhase = p;
+  try { localStorage.setItem('crateDashGamePhase', p); } catch (e) {}
+}
+function currentPhaseLimitMinutes() {
+  return gamePhase === 'practice' ? practiceWindowMinutes : timeLimitMinutes;
+}
+
 // ============ SESSION TIME LIMIT ============
 // The clock starts the first time this browser ever clicks Play, and keeps
-// running (persisted, so a reload doesn't reset it) until the researcher's
-// configured time limit runs out — at that point revives stop being offered.
+// running (persisted, so a reload doesn't reset it) — first counting down
+// the practice window (if any), then the real time limit, until revives
+// stop being offered.
 let timeUp = false;
 function getSessionStartTs() {
   try {
@@ -487,9 +502,10 @@ function getSessionStartTs() {
 function markSessionStarted() {
   try {
     const existing = localStorage.getItem('crateDashSessionStartTs');
-    if (existing && timeLimitMinutes) {
+    const limit = currentPhaseLimitMinutes();
+    if (existing && limit) {
       const elapsedMs = Date.now() - Number(existing);
-      if (elapsedMs >= timeLimitMinutes * 60000) {
+      if (elapsedMs >= limit * 60000) {
         // Their previous visit's time was already used up. Rather than
         // silently letting them keep playing with a timer stuck at 0:00,
         // treat this Play click as a brand new visit — fresh clock.
@@ -503,37 +519,60 @@ function markSessionStarted() {
     }
   } catch (e) {}
 }
+// Called when the practice window has fully elapsed and the player taps
+// through to start the real, counted session: fresh clock, fresh coin
+// balance (so the group's coin-cost manipulation means the same thing for
+// everyone regardless of how practice went), and a fresh game_start event
+// so the two phases are cleanly separable in the data.
+function startRealPhase() {
+  setGamePhase('real');
+  timeUp = false;
+  try { localStorage.setItem('crateDashSessionStartTs', String(Date.now())); } catch (e) {}
+  save.coins = DEFAULT_SAVE.coins;
+  save.best = 0;
+  persistSave();
+  runsPlayed = 0;
+  trackEvent('game_start', { mode, character: save.character, skin: save.equipped, runsPlayed, phase: gamePhase });
+  resetRun();
+  player.visible = true;
+  $('gameover').classList.add('hidden');
+  $('hud').classList.remove('hidden');
+  $('powerBar').classList.remove('hidden');
+  paintPowerBar();
+  keepScreenAwake();
+  state = 'ready'; updateHUD();
+  setTimeout(() => { state = 'play'; }, 150);
+  beep(700, 0.12, 'triangle', 0.08); setTimeout(() => beep(1000, 0.16, 'triangle', 0.07), 100);
+}
 function updateTimerDisplay() {
   const hudT = document.getElementById('hudTimer');
   const goT = document.getElementById('goTimer');
   const goUp = document.getElementById('goTimeUp');
-  if (!timeLimitMinutes) {
+  const limitMinutes = currentPhaseLimitMinutes();
+  if (!limitMinutes) {
     if (hudT) hudT.classList.add('hidden');
     if (goT) goT.classList.add('hidden');
     return;
   }
   const startTs = getSessionStartTs();
-  const totalMs = timeLimitMinutes * 60000;
+  const totalMs = limitMinutes * 60000;
   const elapsedMs = startTs ? (Date.now() - startTs) : 0;
   const remainingMs = Math.max(0, totalMs - elapsedMs);
   const wasTimeUp = timeUp;
   if (startTs && remainingMs <= 0) timeUp = true;
   const mm = Math.floor(remainingMs / 60000);
   const ss = Math.floor((remainingMs % 60000) / 1000);
-  const label = '⏱ ' + mm + ':' + String(ss).padStart(2, '0');
+  const prefix = gamePhase === 'practice' ? '🏋 Practice ' : '⏱ ';
+  const label = prefix + mm + ':' + String(ss).padStart(2, '0');
   if (hudT) { hudT.textContent = label; hudT.classList.remove('hidden'); }
   if (goT) {
     if (timeUp) goT.classList.add('hidden');
-    else { goT.textContent = 'Time left: ' + mm + ':' + String(ss).padStart(2, '0'); goT.classList.remove('hidden'); }
+    else { goT.textContent = (gamePhase === 'practice' ? 'Practice time left: ' : 'Time left: ') + mm + ':' + String(ss).padStart(2, '0'); goT.classList.remove('hidden'); }
   }
-  if (goUp) goUp.classList.toggle('hidden', !timeUp);
+  if (goUp) goUp.classList.toggle('hidden', !(timeUp && gamePhase !== 'practice'));
   if (!wasTimeUp && timeUp) {
-    if (state === 'play' || state === 'ready') die();
-    else if (state === 'over') {
-      $('btnRevive').style.display = 'none';
-      $('btnReviveAd').style.display = 'none';
-      recordDeclinedRevive();
-    }
+    if (state === 'play' || state === 'ready') die('time_out');
+    else if (state === 'over') applyGameOverButtons();
   }
 }
 setInterval(updateTimerDisplay, 1000);
@@ -554,6 +593,7 @@ function getPlayerId() {
 }
 const TELEMETRY_ENDPOINT = '/api/event';
 const playerId = getPlayerId();
+getPlayerGroup(); // draw/assign the group right away, same moment as the player id (function is hoisted, safe to call here)
 let sessionId = null;
 function trackEvent(type, data) {
   try {
@@ -573,6 +613,7 @@ function trackEvent(type, data) {
   } catch (e) {}
 }
 let runEndRecorded = false;
+let reviveChoiceRecordedForThisLife = false;
 function recordAbandonedIfMidRun() {
   if (document.hidden && !runEndRecorded && (state === 'play' || state === 'ready')) {
     runEndRecorded = true;
@@ -707,9 +748,7 @@ const G = {
   pup: new THREE.OctahedronGeometry(0.55, 0),
 };
 const PUPDEF = {
-  dj:    { label: '🦅 Double jump', color: 0x4db8ff, dur: 12 },
   smash: { label: '🔨 Crate smasher', color: 0xff8c3d, dur: 10 },
-  slow:  { label: '⏳ Slow-mo', color: 0xb98cff, dur: 6 },
 };
 const PUPMAT = {};
 for (const k in PUPDEF) PUPMAT[k] = new THREE.MeshLambertMaterial({ color: PUPDEF[k].color, emissive: PUPDEF[k].color, emissiveIntensity: 0.4 });
@@ -1130,10 +1169,10 @@ function updateCurve(dt) {
   curve += (curveTarget - curve) * Math.min(1, dt * 0.9);
 }
 
-const powers = { dj: 0, smash: 0, slow: 0 };
-const inv = { dj: 1, smash: 1, slow: 1 };
-let runSkillGets = { dj: 0, smash: 0, slow: 0 };
-let runSkillUses = { dj: 0, smash: 0, slow: 0 };
+const powers = { smash: 0 };
+const inv = { smash: 1 };
+let runSkillGets = { smash: 0 };
+let runSkillUses = { smash: 0 };
 
 function resetRun() {
   for (const o of obstacles) scene.remove(o.mesh);
@@ -1145,15 +1184,16 @@ function resetRun() {
   swordEnergy = 100; swordHeld = false;
   speed = 13; dist = 0; score = 0; runCoins = 0; shakeT = 0;
   runTime = 0; jumps = 0; runMoves = 0; runJumps = 0;
-  powers.dj = 0; powers.smash = 0; powers.slow = 0;
-  inv.dj = 1; inv.smash = 1; inv.slow = 1;
-  runSkillGets = { dj: 0, smash: 0, slow: 0 };
-  runSkillUses = { dj: 0, smash: 0, slow: 0 };
+  powers.smash = 0;
+  inv.smash = 1;
+  runSkillGets = { smash: 0 };
+  runSkillUses = { smash: 0 };
   distToNext = 18;
   resetCurveSystem();
   if (zone !== 0) { zone = 0; applyZone(true); } else { zone = 0; rebuildDecos(); }
   player.position.set(0, 0, 0);
   runEndRecorded = false;
+  reviveChoiceRecordedForThisLife = false;
   updateHUD();
 }
 let zoneLerp = 1;
@@ -1282,8 +1322,7 @@ function spawnWave() {
   }
   if (rng() < 0.18) {
     const l = Math.floor(rng() * 3);
-    const keys = ['dj', 'smash', 'slow'];
-    const k = keys[Math.floor(rng() * 3)];
+    const k = 'smash';
     const m = new THREE.Mesh(G.pup, PUPMAT[k]);
     m.position.set(LANES[l], 1.25, -101);
     scene.add(m);
@@ -1311,11 +1350,6 @@ function beep(freq, dur, type, vol) {
 function jump() {
   if (state !== 'play') return;
   if (py <= 0.05) { vy = 13.5; jumps = 1; runJumps++; beep(420, 0.09, 'square', 0.05); }
-  else if (powers.dj > 0 && jumps === 1) {
-    vy = 12; jumps = 2; runJumps++;
-    burst(player.position.x, py + 0.6, 0, 0x4db8ff);
-    beep(580, 0.09, 'square', 0.05);
-  }
 }
 function move(d) {
   if (state !== 'play') return;
@@ -1373,19 +1407,17 @@ function recordGameOver(endReason) {
     mode, score, coinsEarned: runCoins, zone: zone + 1,
     character: save.character, skin: save.equipped, group: getPlayerGroup(),
     distance: Math.floor(dist), survivalTime: Number(runTime.toFixed(1)), jumps: runJumps, moves: runMoves,
-    djGets: runSkillGets.dj, djUses: runSkillUses.dj,
     smashGets: runSkillGets.smash, smashUses: runSkillUses.smash,
-    slowGets: runSkillGets.slow, slowUses: runSkillUses.slow,
-    endReason: endReason || 'died'
+    endReason: endReason || 'died', phase: gamePhase
   });
 }
-function die() {
+function die(reason) {
   state = 'over';
   haptic([90, 45, 130]); shakeT = 0.5;
   beep(130, 0.4, 'sawtooth', 0.09);
   burst(player.position.x, 1.2, 0, SKINS.find(s => s.id === save.equipped).color);
   player.visible = false;
-  recordGameOver('died');
+  recordGameOver(reason || 'died');
   setTimeout(showGameOver, 600);
 }
 function levelUp() {
@@ -1417,7 +1449,7 @@ function loop(now) {
   }
 
   if (state === 'play') {
-    const sp = speed * (powers.slow > 0 ? 0.55 : 1);
+    const sp = speed;
     updateCurve(dt);
     dist += sp * dt;
     runTime += dt;
@@ -1550,13 +1582,12 @@ function loop(now) {
         runSkillGets[p.k] = (runSkillGets[p.k] || 0) + 1;
         toast('+1 ' + PUPDEF[p.k].label + ' — stored, tap to use');
         beep(980, 0.1, 'triangle', 0.06);
-        trackEvent('powerup_get', { skill: p.k, mode });
+        trackEvent('powerup_get', { skill: p.k, mode, phase: gamePhase });
       }
     }
     pups = pups.filter(p => { if (p.taken || p.z > 14) { if (!p.taken) scene.remove(p.mesh); return false; } return true; });
 
     paintPowerBar();
-    $('slowfx').style.opacity = powers.slow > 0 ? 1 : 0;
 
     for (const s of stripes) { s.position.z += sp * dt; if (s.position.z > 10) s.position.z -= 26 * 7; s.position.x = s.userData.bx + bend(s.position.z); }
     for (const d of decos) {
@@ -1645,9 +1676,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') move(-1);
   if (e.code === 'ArrowRight' || e.code === 'KeyD') move(1);
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') jump();
-  if (e.code === 'Digit1') usePower('dj');
-  if (e.code === 'Digit2') usePower('smash');
-  if (e.code === 'Digit3') usePower('slow');
+  if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') usePower('smash');
 });
 
 
@@ -1760,18 +1789,18 @@ function usePower(k) {
   inv[k]--;
   powers[k] = PUPDEF[k].dur;
   runSkillUses[k] = (runSkillUses[k] || 0) + 1;
-  beep(k === 'slow' ? 500 : k === 'smash' ? 320 : 620, 0.1, 'triangle', 0.06);
+  beep(320, 0.1, 'triangle', 0.06);
   paintPowerBar();
-  trackEvent('powerup_use', { skill: k, mode });
+  trackEvent('powerup_use', { skill: k, mode, phase: gamePhase });
 }
 function paintPowerBar() {
-  for (const k of ['dj', 'smash', 'slow']) {
+  for (const k of ['smash']) {
     const b = document.getElementById('pw_' + k), n = document.getElementById('pwn_' + k);
     if (powers[k] > 0) { b.classList.add('on'); b.style.opacity = 1; n.textContent = Math.ceil(powers[k]) + 's'; }
     else { b.classList.remove('on'); n.textContent = '×' + inv[k]; b.style.opacity = inv[k] > 0 ? 1 : 0.45; }
   }
 }
-['dj', 'smash', 'slow'].forEach(k => { document.getElementById('pw_' + k).onclick = () => usePower(k); });
+['smash'].forEach(k => { document.getElementById('pw_' + k).onclick = () => usePower(k); });
 
 // ============ UI ============
 const $ = id => document.getElementById(id);
@@ -1788,12 +1817,15 @@ function toast(msg) {
 function startGame(m) {
   askTiltPermission();
   calibrateTilt();
+  // If no practice window is configured, there's no practice phase at all —
+  // go straight to the real, counted session from the first click.
+  if (!practiceWindowMinutes && gamePhase === 'practice') setGamePhase('real');
   markSessionStarted();
   mode = m || 'endless';
   rng = Math.random;
   runsPlayed++;
   sessionId = 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-  trackEvent('game_start', { mode, character: save.character, skin: save.equipped, runsPlayed });
+  trackEvent('game_start', { mode, character: save.character, skin: save.equipped, runsPlayed, phase: gamePhase });
   zone = 0; applyZone(true);
   resetRun();
   player.visible = true;
@@ -1823,7 +1855,9 @@ function showMenu() {
 // ============ REVIVE EXPERIMENT GROUPS ============
 // Each group sees a different combination of ad-watch time and coin cost
 // for reviving, so we can compare which revive framing students prefer.
-const REVIVE_GROUPS = {
+// Group assignment is a pure random draw (25% each), made once per player
+// and reused for both the practice window and the real session.
+let REVIVE_GROUPS = {
   1: { adSeconds: 20, coinCost: 10 },
   2: { adSeconds: 20, coinCost: 40 },
   3: { adSeconds: 5, coinCost: 10 },
@@ -1831,11 +1865,13 @@ const REVIVE_GROUPS = {
 };
 function getPlayerGroup() {
   try {
-    const raw = localStorage.getItem('crateDashDemographics');
-    if (!raw) return null;
-    const g = JSON.parse(raw).group;
-    return g ? Number(g) : null;
-  } catch (e) { return null; }
+    let g = localStorage.getItem('crateDashPlayerGroup');
+    if (!g) {
+      g = String(1 + Math.floor(Math.random() * 4));
+      localStorage.setItem('crateDashPlayerGroup', g);
+    }
+    return Number(g);
+  } catch (e) { return 1; }
 }
 function getReviveConfig() {
   const g = getPlayerGroup();
@@ -1844,8 +1880,29 @@ function getReviveConfig() {
 function recordDeclinedRevive() {
   trackEvent('revive_choice', {
     group: getPlayerGroup(), reviveChoice: null, reviveWasOffered: false,
-    scoreAtChoice: score, zone: zone + 1
+    scoreAtChoice: score, zone: zone + 1, phase: gamePhase
   });
+}
+// Shared by showGameOver() (a fresh death) and updateTimerDisplay() (time
+// runs out while already sitting on this screen deciding) — one place that
+// decides which of the three possible screens to show: normal revive
+// choice, "practice's over, tap to start the real round", or "time's up,
+// thanks for playing" (only for the real phase — practice never ends the
+// whole game, it just moves on).
+function applyGameOverButtons() {
+  const practiceEnding = timeUp && gamePhase === 'practice';
+  const canRevive = mode === 'endless' && !timeUp;
+  const reviveCfg = getReviveConfig();
+  $('btnRevive').textContent = '⚡ Revive · ' + reviveCfg.coinCost + ' coins';
+  $('btnReviveAd').textContent = '📺 Revive · ' + reviveCfg.adSeconds + 's ad';
+  $('btnRevive').style.display = (canRevive && save.coins >= reviveCfg.coinCost) ? 'inline-block' : 'none';
+  $('btnReviveAd').style.display = canRevive ? 'inline-block' : 'none';
+  $('btnStartReal').style.display = practiceEnding ? 'inline-block' : 'none';
+  $('goTimeUp').classList.toggle('hidden', !(timeUp && gamePhase !== 'practice'));
+  if (timeUp && !reviveChoiceRecordedForThisLife) {
+    reviveChoiceRecordedForThisLife = true;
+    recordDeclinedRevive();
+  }
 }
 function showGameOver() {
   releaseScreenAwake();
@@ -1853,13 +1910,7 @@ function showGameOver() {
   $('bigScore').textContent = lastRunCoins;
   $('goBest').innerHTML = (lastRunCoins >= save.best && lastRunCoins > 0 ? '🏆 New best!' : 'Best: <b>' + save.best + '</b>');
   $('goZone').textContent = 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
-  const canRevive = mode === 'endless' && !timeUp;
-  const reviveCfg = getReviveConfig();
-  $('btnRevive').textContent = '⚡ Revive · ' + reviveCfg.coinCost + ' coins';
-  $('btnReviveAd').textContent = '📺 Revive · ' + reviveCfg.adSeconds + 's ad';
-  $('btnRevive').style.display = (canRevive && save.coins >= reviveCfg.coinCost) ? 'inline-block' : 'none';
-  $('btnReviveAd').style.display = canRevive ? 'inline-block' : 'none';
-  if (timeUp) recordDeclinedRevive();
+  applyGameOverButtons();
   $('hud').classList.add('hidden');
   $('powerBar').classList.add('hidden');
   $('gameover').classList.remove('hidden');
@@ -1870,7 +1921,7 @@ function doRevive(paid) {
   if (paid) save.coins -= reviveCfg.coinCost;
   trackEvent('revive_choice', {
     group: getPlayerGroup(), reviveChoice: paid ? 'coins' : 'ad',
-    scoreAtChoice: score, zone: zone + 1
+    scoreAtChoice: score, zone: zone + 1, phase: gamePhase
   });
   resetRun();
   player.visible = true;
@@ -1881,6 +1932,7 @@ function doRevive(paid) {
   state = 'play'; updateHUD();
   beep(600, 0.1, 'triangle', 0.07); setTimeout(() => beep(900, 0.14, 'triangle', 0.06), 90);
 }
+$('btnStartReal').onclick = startRealPhase;
 $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
 
 // ============ DEMOGRAPHICS SURVEY (one-time, before first play) ============
@@ -1897,9 +1949,10 @@ $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
       gamingExperience: document.getElementById('demoExperience').value,
       gamingHoursPerWeek: document.getElementById('demoHours').value.trim(),
       device: document.getElementById('demoDevice').value,
-      group: document.getElementById('demoGroup').value
+      group: getPlayerGroup()
     };
-    const missing = Object.values(fields).some(v => v === '' || v === null || v === undefined);
+    const missing = ['age', 'gender', 'nationality', 'major', 'gamingExperience', 'gamingHoursPerWeek', 'device']
+      .some(k => fields[k] === '' || fields[k] === null || fields[k] === undefined);
     if (missing) {
       document.getElementById('demoError').style.display = 'block';
       return;
