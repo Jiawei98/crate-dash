@@ -160,5 +160,6 @@ When you're ready to host this for real:
    SQLite, Firebase, etc.) — only the `POST /api/event` and `GET /api/events`
    handlers in `server.js` need to change; the game's `trackEvent()` calls
    don't need to know or care.
+3. After deploying, using Ctrl+Alt+R (Control+Option+R on Mac) should now correctly bring up the password prompt.
 
 
