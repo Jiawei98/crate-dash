@@ -104,6 +104,27 @@ function sendJSON(res, status, obj) {
   res.end(body);
 }
 
+// Gates the dashboard and every route that exposes play data (raw JSON,
+// CSV exports) behind a password prompt — students shouldn't stumble onto
+// this just by guessing the URL. Uses HTTP Basic Auth so the browser itself
+// shows a native password box and remembers it for the rest of the session;
+// no cookies or login page to build. Reuses the same ADMIN_KEY as clearing
+// data / restarting a device. If ADMIN_KEY isn't set, these routes stay
+// open (consistent with every other admin feature defaulting to "off"
+// without a configured key) — set ADMIN_KEY to actually enable the gate.
+function requireDashboardAuth(req, res) {
+  if (!ADMIN_KEY) return true;
+  const header = req.headers['authorization'] || '';
+  if (header.startsWith('Basic ')) {
+    const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+    const pass = decoded.includes(':') ? decoded.slice(decoded.indexOf(':') + 1) : decoded;
+    if (pass === ADMIN_KEY) return true;
+  }
+  res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Crate Dash Dashboard"', 'Content-Type': 'text/plain' });
+  res.end('Password required to view play data.');
+  return false;
+}
+
 const CHAR_LABELS = { dax: 'Dax', nova: 'Nova' };
 
 // Groups every event by sessionId, then produces ONE ROW PER ATTEMPT (per
@@ -127,6 +148,7 @@ function buildRunRows(events) {
     const overs = evs.filter(e => e.type === 'game_over');
     const revives = evs.filter(e => e.type === 'revive_choice');
 
+    let realAttemptCounter = 0;
     overs.forEach((over, i) => {
       const overTs = over.ts || over._receivedAt || 0;
       const nextOverTs = overs[i + 1] ? (overs[i + 1].ts || overs[i + 1]._receivedAt || Infinity) : Infinity;
@@ -137,11 +159,16 @@ function buildRunRows(events) {
         return rTs >= overTs && rTs < nextOverTs;
       });
       const reviveMethod = matchingRevive ? (matchingRevive.reviveChoice == null ? 'none' : matchingRevive.reviveChoice) : '';
+      // Practice attempts are always numbered 0 — the real, counted
+      // attempts get their own independent sequence starting at 1,
+      // regardless of how many practice attempts came before them.
+      const isPractice = over.phase === 'practice';
+      const attemptNum = isPractice ? 0 : ++realAttemptCounter;
 
       rows.push({
         'Session ID': sid,
         'Player ID': over.playerId || (start || {}).playerId || '',
-        'Attempt #': i + 1,
+        'Attempt #': attemptNum,
         'Group': over.group ?? (matchingRevive || {}).group ?? '',
         'Phase': over.phase || '',
         'Ended At': new Date(overTs).toLocaleString(),
@@ -187,7 +214,7 @@ function buildPlayerSummaries(events) {
     const group = overs.find(e => e.group != null)?.group
       ?? revives.find(e => e.group != null)?.group ?? '';
     const totalCoins = overs.reduce((a, e) => a + (e.coinsEarned || 0), 0);
-    const avgCoins = (totalCoins / overs.length).toFixed(1);
+    const avgZone = (overs.reduce((a, e) => a + (e.zone || 0), 0) / overs.length).toFixed(1);
     const totalDistance = Math.round(overs.reduce((a, e) => a + (e.distance || 0), 0));
     const totalJumps = overs.reduce((a, e) => a + (e.jumps || 0), 0);
     const totalMoves = overs.reduce((a, e) => a + (e.moves || 0), 0);
@@ -215,7 +242,7 @@ function buildPlayerSummaries(events) {
       'Attempts': overs.length,
       'Final Balance': finalBalance,
       'Total Coins': totalCoins,
-      'Avg Coins/Attempt': avgCoins,
+      'Avg Zone': avgZone,
       'Total Distance': totalDistance,
       'Total Jumps': totalJumps,
       'Total Moves': totalMoves,
@@ -231,22 +258,6 @@ function buildPlayerSummaries(events) {
 }
 
 function buildDashboard(events) {
-  // Events from before this feature existed have no `phase` field at all —
-  // treat those as real (there was no practice concept back then). The top
-  // summary cards only count the real, counted session so practice attempts
-  // don't skew the numbers a researcher actually cares about; the full
-  // history (both phases) is still visible in the attempts table below.
-  const isReal = e => !e.phase || e.phase === 'real';
-  const starts = events.filter(e => e.type === 'game_start' && isReal(e));
-  const overs = events.filter(e => e.type === 'game_over' && isReal(e));
-  const players = new Set(events.map(e => e.playerId).filter(Boolean));
-  const coinsPerRun = overs.map(e => e.coinsEarned || 0);
-  const totalRuns = overs.length; // used as the averages' denominator, not shown as its own card
-  const avgCoins = totalRuns ? (coinsPerRun.reduce((a, b) => a + b, 0) / totalRuns).toFixed(1) : '0';
-  const maxCoins = coinsPerRun.length ? Math.max(...coinsPerRun) : 0;
-  const avgZone = totalRuns ? (overs.reduce((a, e) => a + (e.zone || 0), 0) / totalRuns).toFixed(1) : '0';
-  const avgDistance = totalRuns ? Math.round(overs.reduce((a, e) => a + (e.distance || 0), 0) / totalRuns) : 0;
-
   const runRows = buildRunRows(events).reverse().slice(0, 50);
   const recentRows = runRows.map(r => `
     <tr>
@@ -275,7 +286,7 @@ function buildDashboard(events) {
       <td>${r['Attempts']}</td>
       <td>${r['Final Balance']}</td>
       <td>${r['Total Coins']}</td>
-      <td>${r['Avg Coins/Attempt']}</td>
+      <td>${r['Avg Zone']}</td>
       <td>${r['Total Distance']}</td>
       <td>${r['Total Jumps']}</td>
       <td>${r['Total Moves']}</td>
@@ -289,9 +300,6 @@ function buildDashboard(events) {
   body { font-family: system-ui, sans-serif; background:#0a1a12; color:#eaf5ee; margin:0; padding:24px; }
   h1 { color:#6dff9c; }
   h2 { color:#ffcf4d; margin-top:36px; font-size:18px; }
-  .stats { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
-  .card { background:#122a1c; border:1px solid #2c4436; border-radius:12px; padding:14px 20px; min-width:140px; }
-  .card b { display:block; font-size:26px; color:#ffcf4d; }
   table { border-collapse:collapse; width:100%; font-size:14px; }
   th, td { border-bottom:1px solid #2c4436; padding:6px 10px; text-align:left; }
   th { color:#9fb4a6; }
@@ -462,16 +470,7 @@ function buildDashboard(events) {
   </script>
 
   <div id="tabAttempt">
-    <div class="stats">
-      <div class="card"><b>${players.size}</b>Players</div>
-      <div class="card"><b>${starts.length}</b>Runs started</div>
-      <div class="card"><b>${avgCoins}</b>Avg coin</div>
-      <div class="card"><b>${maxCoins}</b>Max coin</div>
-      <div class="card"><b>${avgZone}</b>Avg zone reached</div>
-      <div class="card"><b>${avgDistance}</b>Avg distance</div>
-    </div>
-
-    <h2>Most recent runs <span style="color:#7d947f; font-weight:normal; font-size:12px;">(one row per attempt, practice and real both shown — the summary cards above count real attempts only)</span> &nbsp;<a href="/api/export/attempts.csv" style="font-size:12px;">⬇ Export CSV (all rows)</a></h2>
+    <h2>Most recent runs <span style="color:#7d947f; font-weight:normal; font-size:12px;">(one row per attempt — practice attempts are numbered 0)</span> &nbsp;<a href="/api/export/attempts.csv" style="font-size:12px;">⬇ Export CSV (all rows)</a></h2>
     <table>
       <tr>
         <th>Time</th><th>Player</th><th>Attempt #</th><th>Group</th><th>Phase</th><th>Character</th>
@@ -483,10 +482,10 @@ function buildDashboard(events) {
   </div>
 
   <div id="tabPlayer" style="display:none;">
-    <h2>By player <span style="color:#7d947f; font-weight:normal; font-size:12px;">(real-phase attempts only — practice is excluded from every column here)</span> &nbsp;<a href="/api/export/players.csv" style="font-size:12px;">⬇ Export CSV</a></h2>
+    <h2>By player <span style="color:#7d947f; font-weight:normal; font-size:12px;">(real-phase attempts only — practice is excluded from every column here)</span> &nbsp;<a href="/api/export/players.csv" style="font-size:12px;">⬇ Export CSV</a> &nbsp;<a href="/api/export/demographics.csv" style="font-size:12px;">⬇ Export demographics CSV</a></h2>
     <table>
       <tr>
-        <th>Player</th><th>Group</th><th>Real Attempts</th><th>Final Balance</th><th>Total Coins Earned</th><th>Avg Coins/Attempt</th>
+        <th>Player</th><th>Group</th><th>Real Attempts</th><th>Final Balance</th><th>Total Coins Earned</th><th>Avg Zone</th>
         <th>Total Distance</th><th>Total Jumps</th><th>Total Moves</th>
         <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method breakdown</th>
       </tr>
@@ -523,6 +522,30 @@ function sendCSV(res, filename, csv) {
   res.end(csv);
 }
 
+// One row per player's demographics survey answer (the one-time form shown
+// before their first play). Player ID is the join key against the by-player
+// summary export.
+function buildDemographicsRows(events) {
+  const seen = new Set();
+  const rows = [];
+  for (const e of events) {
+    if (e.type !== 'demographics' || !e.playerId || seen.has(e.playerId)) continue;
+    seen.add(e.playerId);
+    rows.push({
+      'Player ID': e.playerId,
+      'Group': e.group ?? '',
+      'Age': e.age ?? '',
+      'Gender': e.gender ?? '',
+      'Nationality': e.nationality ?? '',
+      'Major': e.major ?? '',
+      'Gaming Experience': e.gamingExperience ?? '',
+      'Gaming Hours/Week': e.gamingHoursPerWeek ?? '',
+      'Device': e.device ?? ''
+    });
+  }
+  return rows;
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -544,18 +567,26 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/events') {
+    if (!requireDashboardAuth(req, res)) return;
     return sendJSON(res, 200, readEvents());
   }
 
   // CSV downloads of both dashboard tables — the full dataset, not just the
   // most recent 50 rows shown on screen.
   if (req.method === 'GET' && url.pathname === '/api/export/attempts.csv') {
+    if (!requireDashboardAuth(req, res)) return;
     const rows = buildRunRows(readEvents());
     return sendCSV(res, 'crate-dash-attempts.csv', toCSV(rows));
   }
   if (req.method === 'GET' && url.pathname === '/api/export/players.csv') {
+    if (!requireDashboardAuth(req, res)) return;
     const rows = buildPlayerSummaries(readEvents());
     return sendCSV(res, 'crate-dash-players.csv', toCSV(rows));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/export/demographics.csv') {
+    if (!requireDashboardAuth(req, res)) return;
+    const rows = buildDemographicsRows(readEvents());
+    return sendCSV(res, 'crate-dash-demographics.csv', toCSV(rows));
   }
 
   // Public: every player's game checks this on load to know whether the
@@ -645,6 +676,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/dashboard') {
+    if (!requireDashboardAuth(req, res)) return;
     const html = buildDashboard(readEvents());
     res.writeHead(200, { 'Content-Type': 'text/html' });
     return res.end(html);
