@@ -782,7 +782,7 @@ const G = {
   pup: new THREE.OctahedronGeometry(0.55, 0),
 };
 const PUPDEF = {
-  smash: { label: '🔨 Crate smasher', color: 0xff8c3d, dur: 10 },
+  smash: { label: '🔨 Crate smasher', color: 0x2de3ff, dur: 10 },
 };
 const PUPMAT = {};
 for (const k in PUPDEF) PUPMAT[k] = new THREE.MeshLambertMaterial({ color: PUPDEF[k].color, emissive: PUPDEF[k].color, emissiveIntensity: 0.4 });
@@ -829,11 +829,11 @@ function bendRoad() {
   }
   pos.needsUpdate = true;
 }
-const groundL = new THREE.Mesh(new THREE.PlaneGeometry(70, 220), M.ground);
-groundL.rotation.x = -Math.PI / 2; groundL.position.set(-39, -0.03, -80);
+const groundL = new THREE.Mesh(new THREE.PlaneGeometry(300, 220), M.ground);
+groundL.rotation.x = -Math.PI / 2; groundL.position.set(-154, -0.03, -80);
 groundL.receiveShadow = true;
 scene.add(groundL);
-const groundR = groundL.clone(); groundR.position.x = 39;
+const groundR = groundL.clone(); groundR.position.x = 154;
 scene.add(groundR);
 
 const stripes = [];
@@ -1354,7 +1354,7 @@ function spawnWave() {
       coins.push({ mesh: c, lane: l, z: -103 - i * 2.2, taken: false });
     }
   }
-  if (rng() < 0.18) {
+  if (rng() < 0.03) {
     const l = Math.floor(rng() * 3);
     const k = 'smash';
     const m = new THREE.Mesh(G.pup, PUPMAT[k]);
@@ -2025,6 +2025,7 @@ function doRevive(paid) {
   if (paid) save.coins -= reviveCfg.coinCost;
   trackEvent('revive_choice', {
     group: getPlayerGroup(), reviveChoice: paid ? 'coins' : 'ad',
+    coinsCost: paid ? reviveCfg.coinCost : 0,
     scoreAtChoice: score, zone: zone + 1, phase: gamePhase
   });
   resetRun();
