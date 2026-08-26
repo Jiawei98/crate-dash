@@ -471,7 +471,7 @@ function buildDashboard(events) {
       <div class="card"><b>${avgDistance}</b>Avg distance</div>
     </div>
 
-    <h2>Most recent runs <span style="color:#7d947f; font-weight:normal; font-size:12px;">(one row per attempt, practice and real both shown — the summary cards above count real attempts only)</span></h2>
+    <h2>Most recent runs <span style="color:#7d947f; font-weight:normal; font-size:12px;">(one row per attempt, practice and real both shown — the summary cards above count real attempts only)</span> &nbsp;<a href="/api/export/attempts.csv" style="font-size:12px;">⬇ Export CSV (all rows)</a></h2>
     <table>
       <tr>
         <th>Time</th><th>Player</th><th>Attempt #</th><th>Group</th><th>Phase</th><th>Character</th>
@@ -483,7 +483,7 @@ function buildDashboard(events) {
   </div>
 
   <div id="tabPlayer" style="display:none;">
-    <h2>By player <span style="color:#7d947f; font-weight:normal; font-size:12px;">(real-phase attempts only — practice is excluded from every column here)</span></h2>
+    <h2>By player <span style="color:#7d947f; font-weight:normal; font-size:12px;">(real-phase attempts only — practice is excluded from every column here)</span> &nbsp;<a href="/api/export/players.csv" style="font-size:12px;">⬇ Export CSV</a></h2>
     <table>
       <tr>
         <th>Player</th><th>Group</th><th>Real Attempts</th><th>Final Balance</th><th>Total Coins Earned</th><th>Avg Coins/Attempt</th>
@@ -498,6 +498,29 @@ function buildDashboard(events) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Turns an array of same-shaped objects into a CSV string (using the first
+// row's keys as the header). Quotes any value containing a comma, quote, or
+// newline, doubling internal quotes per the CSV spec.
+function toCSV(rows) {
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  const cell = v => {
+    const s = String(v ?? '');
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [headers.map(cell).join(',')];
+  for (const row of rows) lines.push(headers.map(h => cell(row[h])).join(','));
+  return lines.join('\r\n');
+}
+function sendCSV(res, filename, csv) {
+  res.writeHead(200, {
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Length': Buffer.byteLength(csv)
+  });
+  res.end(csv);
 }
 
 const server = http.createServer((req, res) => {
@@ -522,6 +545,17 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/events') {
     return sendJSON(res, 200, readEvents());
+  }
+
+  // CSV downloads of both dashboard tables — the full dataset, not just the
+  // most recent 50 rows shown on screen.
+  if (req.method === 'GET' && url.pathname === '/api/export/attempts.csv') {
+    const rows = buildRunRows(readEvents());
+    return sendCSV(res, 'crate-dash-attempts.csv', toCSV(rows));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/export/players.csv') {
+    const rows = buildPlayerSummaries(readEvents());
+    return sendCSV(res, 'crate-dash-players.csv', toCSV(rows));
   }
 
   // Public: every player's game checks this on load to know whether the
