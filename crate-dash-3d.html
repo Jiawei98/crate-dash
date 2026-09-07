@@ -18,6 +18,13 @@
   .hidden { display: none !important; }
   h1 { font-size: clamp(36px, 10vw, 60px); font-weight: 800; letter-spacing: 1px; line-height: 1.05; text-shadow: 0 4px 0 rgba(0,0,0,0.35); }
   h1 .g1 { color: #ffcf4d; } h1 .g2 { color: #6dff9c; }
+  .ruleSec { margin:2px 0 6px; }
+  .ruleH { font-size:15px; font-weight:800; color:#6dff9c; margin-top:6px; }
+  .ruleH2 { font-size:14px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#ffcf4d; margin:16px 0 8px; border-top:1px solid rgba(255,255,255,.12); padding-top:12px; }
+  .ruleT { font-size:13.5px; line-height:1.55; color:#c7d6cc; margin-top:3px; }
+  .enemy { display:flex; align-items:flex-start; gap:11px; margin:9px 0; font-size:13.5px; line-height:1.45; color:#c7d6cc; }
+  .enemy b { color:#fff; }
+  .enemy .eIco { font-size:26px; line-height:1; flex:0 0 auto; width:30px; text-align:center; }
   .sub { color: #b8c9bf; font-size: 15px; margin: 12px 0 24px; line-height: 1.6; }
   .btn { display: inline-block; border: none; cursor: pointer; font-weight: 800; border-radius: 16px; padding: 15px 34px; font-size: 18px; margin: 7px; color: #1a2a10; background: #6dff9c; box-shadow: 0 5px 0 #2f9c58; transition: transform .08s; }
   .btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #2f9c58; }
@@ -226,6 +233,24 @@
     <button class="btn" id="btnDemoSubmit" style="margin-top:16px;">Continue &rarr;</button>
   </div>
 
+  <div id="howto" class="overlay hidden">
+    <h1 style="font-size:clamp(26px,8vw,42px);"><span class="g1">HOW TO</span> <span class="g2">PLAY</span></h1>
+    <div style="width:90%;max-width:400px;text-align:left;">
+      <div class="ruleSec">
+        <div class="ruleH">🎮 Controls</div>
+        <div class="ruleT">Tilt your phone left or right to switch lane (or swipe sideways / use ← → arrow keys). Swipe up or tap to jump. Hold <b>two fingers</b> on the screen to draw your ⚔ sword. The runner holds its lane — it only moves when you steer it.</div>
+      </div>
+      <div class="ruleH2">👹 Enemies — what stops you</div>
+      <div class="enemy"><span class="eIco">📦</span><div><b>Wooden crate</b> — jump over it, or destroy it with your sword or the Crate Smasher power.</div></div>
+      <div class="enemy"><span class="eIco">🩶</span><div><b>Silver (steel) crate</b> — the sword can't cut through steel. You must <b>jump</b> these.</div></div>
+      <div class="enemy"><span class="eIco">🦁</span><div><b>Beast</b> — you <b>cannot jump</b> over a beast. Draw your sword and slash it down before you reach it.</div></div>
+      <div class="ruleH2">✨ Super power — grab the glowing orb</div>
+      <div class="enemy"><span class="eIco">🔨</span><div><b>Crate smasher</b> — smash straight through wooden crates without having to jump.</div></div>
+      <div class="ruleT" style="margin-top:14px;color:#ffcf4d;font-weight:800;">💰 Coins are your score — every coin you collect adds to it. Grab as many as you can!</div>
+    </div>
+    <button class="btn" id="btnHowtoNext" style="margin-top:12px;">Got it — let's play ▶</button>
+  </div>
+
   <div id="experimentEnded" class="overlay hidden">
     <div style="font-size:40px;">🏁</div>
     <h1 style="font-size:20px;margin-top:10px;">Thank you for participating!</h1>
@@ -258,6 +283,7 @@
       <button class="btn gold" id="btnRevive">⚡ Revive · 50 coins</button>
       <button class="btn" id="btnStartReal" style="display:none;">🏁 Start the real challenge</button>
     </div>
+    <div><button class="btn" id="btnRestart" style="display:none;margin-top:2px;">🔄 Restart from the beginning</button></div>
     <div id="goTimeUp" class="stat hidden" style="margin-top:14px;color:#9fb4a6;">⏱ Time's up!</div>
     <div><button class="btn" id="btnFinish" style="display:none;margin-top:10px;">✓ I'm done</button></div>
     <div id="goFinished" class="hidden" style="margin-top:6px;">
@@ -1885,6 +1911,7 @@ function showMenu() {
   $('shop').classList.add('hidden');
   $('hud').classList.add('hidden');
   $('powerBar').classList.add('hidden');
+  $('howto').classList.add('hidden');
   $('menu').classList.remove('hidden');
 }
 // ============ REVIVE EXPERIMENT GROUPS ============
@@ -1934,6 +1961,7 @@ function applyGameOverButtons() {
   $('btnReviveAd').textContent = '📺 Revive · ' + reviveCfg.adSeconds + 's ad';
   $('btnRevive').style.display = (canRevive && save.coins >= reviveCfg.coinCost) ? 'inline-block' : 'none';
   $('btnReviveAd').style.display = canRevive ? 'inline-block' : 'none';
+  $('btnRestart').style.display = canRevive ? 'inline-block' : 'none';
   $('btnStartReal').style.display = practiceEnding ? 'inline-block' : 'none';
   $('goTimeUp').classList.toggle('hidden', !realEnding);
   $('btnFinish').style.display = realEnding ? 'inline-block' : 'none';
@@ -2028,7 +2056,15 @@ function doRevive(paid) {
     coinsCost: paid ? reviveCfg.coinCost : 0,
     scoreAtChoice: score, zone: zone + 1, phase: gamePhase
   });
-  resetRun();
+  // Continue from where they died — zone/speed/distance/score/jumps/moves/
+  // skills all carry over. Only runCoins resets: recordGameOver() already
+  // banked it into save.coins just now, so leaving it would double-count
+  // the next time they die.
+  runCoins = 0;
+  curveTarget = 0;
+  for (const o of obstacles) scene.remove(o.mesh);
+  obstacles = [];
+  distToNext = 25;
   player.visible = true;
   $('gameover').classList.add('hidden');
   $('hud').classList.remove('hidden');
@@ -2037,6 +2073,24 @@ function doRevive(paid) {
   state = 'play'; updateHUD();
   beep(600, 0.1, 'triangle', 0.07); setTimeout(() => beep(900, 0.14, 'triangle', 0.06), 90);
 }
+function doRestart() {
+  if (timeUp) return;
+  trackEvent('revive_choice', {
+    group: getPlayerGroup(), reviveChoice: 'restart',
+    scoreAtChoice: score, zone: zone + 1, phase: gamePhase
+  });
+  resetRun();
+  player.visible = true;
+  $('gameover').classList.add('hidden');
+  $('hud').classList.remove('hidden');
+  $('powerBar').classList.remove('hidden');
+  paintPowerBar();
+  keepScreenAwake();
+  state = 'ready'; updateHUD();
+  setTimeout(() => { state = 'play'; }, 150);
+  beep(600, 0.1, 'triangle', 0.07); setTimeout(() => beep(900, 0.14, 'triangle', 0.06), 90);
+}
+$('btnRestart').onclick = doRestart;
 $('btnStartReal').onclick = startRealPhase;
 $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
 
@@ -2066,6 +2120,10 @@ $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
     try { localStorage.setItem('crateDashDemographics', JSON.stringify(fields)); } catch (e) {}
     trackEvent('demographics', fields);
     $('demographics').classList.add('hidden');
+    $('howto').classList.remove('hidden');
+  };
+  $('btnHowtoNext').onclick = () => {
+    $('howto').classList.add('hidden');
     showMenu();
   };
 })();

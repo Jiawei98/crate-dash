@@ -176,7 +176,7 @@ function buildRunRows(events) {
         'Skin': over.skin || (start || {}).skin || '',
         'Coins Earned': over.coinsEarned ?? '',
         'Zone Reached': over.zone ?? '',
-        'Distance': over.distance ?? '',
+        'Ending Distance': over.distance ?? '',
         'Survival Time (s)': over.survivalTime ?? '',
         'Jumps': over.jumps ?? '',
         'Moves': over.moves ?? '',
@@ -215,12 +215,17 @@ function buildPlayerSummaries(events) {
       ?? revives.find(e => e.group != null)?.group ?? '';
     const totalCoins = overs.reduce((a, e) => a + (e.coinsEarned || 0), 0);
     const avgZone = (overs.reduce((a, e) => a + (e.zone || 0), 0) / overs.length).toFixed(1);
-    const totalDistance = Math.round(overs.reduce((a, e) => a + (e.distance || 0), 0));
+    // Distance is now cumulative within a continuous streak (ad/coin revives
+    // no longer reset it — only Restart does), so summing across attempts
+    // would double-count the same ground covered more than once. The
+    // farthest point they ever reached (their longest single streak) is the
+    // meaningful number here.
+    const longestDistance = Math.round(overs.reduce((a, e) => Math.max(a, e.distance || 0), 0));
     const totalJumps = overs.reduce((a, e) => a + (e.jumps || 0), 0);
     const totalMoves = overs.reduce((a, e) => a + (e.moves || 0), 0);
     const smashGets = overs.reduce((a, e) => a + (e.smashGets || 0), 0);
     const smashUses = overs.reduce((a, e) => a + (e.smashUses || 0), 0);
-    const reviveCounts = { ad: 0, coins: 0, none: 0 };
+    const reviveCounts = { ad: 0, coins: 0, restart: 0, none: 0 };
     revives.forEach(r => {
       const c = r.reviveChoice == null ? 'none' : r.reviveChoice;
       if (reviveCounts[c] !== undefined) reviveCounts[c]++;
@@ -243,13 +248,14 @@ function buildPlayerSummaries(events) {
       'Final Balance': finalBalance,
       'Total Coins': totalCoins,
       'Avg Zone': avgZone,
-      'Total Distance': totalDistance,
+      'Longest Distance': longestDistance,
       'Total Jumps': totalJumps,
       'Total Moves': totalMoves,
       'Smasher Picked Up': smashGets,
       'Smasher Used': smashUses,
       'Revive: Ad': reviveCounts.ad,
       'Revive: Coins': reviveCounts.coins,
+      'Revive: Restart': reviveCounts.restart,
       'Revive: None': reviveCounts.none
     });
   }
@@ -269,7 +275,7 @@ function buildDashboard(events) {
       <td>${escapeHtml(CHAR_LABELS[r['Character']] || r['Character'])}</td>
       <td>${r['Coins Earned']}</td>
       <td>${r['Zone Reached']}</td>
-      <td>${r['Distance']}</td>
+      <td>${r['Ending Distance']}</td>
       <td>${r['Survival Time (s)']}</td>
       <td>${r['Jumps']}</td>
       <td>${r['Moves']}</td>
@@ -287,11 +293,11 @@ function buildDashboard(events) {
       <td>${r['Final Balance']}</td>
       <td>${r['Total Coins']}</td>
       <td>${r['Avg Zone']}</td>
-      <td>${r['Total Distance']}</td>
+      <td>${r['Longest Distance']}</td>
       <td>${r['Total Jumps']}</td>
       <td>${r['Total Moves']}</td>
       <td>${r['Smasher Picked Up']} / ${r['Smasher Used']}</td>
-      <td>ad ${r['Revive: Ad']} · coins ${r['Revive: Coins']} · none ${r['Revive: None']}</td>
+      <td>ad ${r['Revive: Ad']} · coins ${r['Revive: Coins']} · restart ${r['Revive: Restart']} · none ${r['Revive: None']}</td>
     </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -474,7 +480,7 @@ function buildDashboard(events) {
     <table>
       <tr>
         <th>Time</th><th>Player</th><th>Attempt #</th><th>Group</th><th>Phase</th><th>Character</th>
-        <th>Coins</th><th>Zone</th><th>Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
+        <th>Coins</th><th>Zone</th><th>Ending Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
         <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method</th><th>End Reason</th>
       </tr>
       ${recentRows || '<tr><td colspan="15">No runs yet — go play!</td></tr>'}
@@ -486,7 +492,7 @@ function buildDashboard(events) {
     <table>
       <tr>
         <th>Player</th><th>Group</th><th>Real Attempts</th><th>Final Balance</th><th>Total Coins Earned</th><th>Avg Zone</th>
-        <th>Total Distance</th><th>Total Jumps</th><th>Total Moves</th>
+        <th>Longest Distance</th><th>Total Jumps</th><th>Total Moves</th>
         <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method breakdown</th>
       </tr>
       ${playerSummaryRows || '<tr><td colspan="11">No real-phase attempts yet.</td></tr>'}
