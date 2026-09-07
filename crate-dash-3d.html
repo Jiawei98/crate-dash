@@ -165,14 +165,11 @@
   <div id="vignette"></div>
   <div id="hud" class="hidden">
     <div id="hudScore">0</div>
-    <div id="swordBar" style="width:112px;height:9px;border:1.5px solid rgba(255,255,255,.55);border-radius:6px;margin-top:6px;background:rgba(0,0,0,.35);overflow:hidden;">
-      <div id="swordFill" style="height:100%;width:100%;background:linear-gradient(90deg,#dfe8ef,#8fb7d9);"></div>
-    </div>
-    <div style="font-size:10px;font-weight:800;color:#d7e6dc;letter-spacing:2px;margin-top:3px;text-shadow:0 2px 0 rgba(0,0,0,.4);">⚔ SWORD</div>
     <div id="hudRight">
       <div id="hudCoins">● 0</div>
       <div id="hudZone">Zone 1 · Sunlit Grove</div>
       <div id="hudTimer" class="hidden" style="margin-top:3px;font-weight:800;color:#ffcf4d;font-size:13px;"></div>
+      <div id="hudDistance" style="margin-top:3px;font-size:12px;color:#9fb4a6;">0 m</div>
     </div>
   </div>
   <div id="powerBar" class="hidden" style="position:absolute;bottom:22px;left:0;right:0;display:flex;justify-content:center;gap:18px;z-index:6;pointer-events:none;">
@@ -1580,8 +1577,6 @@ function loop(now) {
       sword.rotation.x += (2.35 - sword.rotation.x) * Math.min(1, dt * 8);
       player.rotation.x += (0 - player.rotation.x) * Math.min(1, dt * 8);
     }
-    g_('swordFill').style.width = swordEnergy.toFixed(0) + '%';
-    g_('swordFill').style.background = swordEnergy < 25 ? '#ff8c6a' : 'linear-gradient(90deg,#dfe8ef,#8fb7d9)';
 
     for (const o of obstacles) {
       o.z += sp * dt; o.mesh.position.z = o.z; o.mesh.position.x = LANES[o.lane] + bend(o.z);
@@ -1869,6 +1864,7 @@ function updateHUD() {
   $('hudScore').textContent = '● ' + runCoins;
   $('hudCoins').textContent = '● ' + (save.coins + runCoins);
   $('hudZone').textContent = 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
+  $('hudDistance').textContent = Math.floor(dist) + ' m';
 }
 function toast(msg) {
   const t = $('toast');

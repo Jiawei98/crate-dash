@@ -133,6 +133,35 @@ const CHAR_LABELS = { dax: 'Dax', nova: 'Nova' };
 // naturally contains every attempt a person made: their first try, then one
 // row per revive after that. Each row is paired with whatever revive
 // decision immediately followed that particular death (if any).
+// Since ad/coin revives now continue play (distance keeps climbing) while
+// Restart resets back to zero, the raw `distance` field on each game_over
+// is cumulative *within a streak*, not "how far this specific life went".
+// This walks a session or player's real attempts in chronological order and
+// works out how much ground was actually covered in each individual life,
+// resetting the running baseline whenever a streak actually restarts — an
+// explicit Restart choice, or the practice→real transition (which also
+// calls resetRun() client-side, so distance genuinely goes back to zero).
+// Returns an array of delta values, same length/order as `overs`.
+function distanceDeltas(overs, revives) {
+  let baseline = 0;
+  let lastPhase = null;
+  return overs.map((over, i) => {
+    const phase = over.phase || 'real';
+    if (lastPhase !== null && phase !== lastPhase) baseline = 0;
+    lastPhase = phase;
+    const total = over.distance || 0;
+    const delta = Math.max(0, Math.round(total - baseline));
+    const overTs = over.ts || over._receivedAt || 0;
+    const nextOverTs = overs[i + 1] ? (overs[i + 1].ts || overs[i + 1]._receivedAt || Infinity) : Infinity;
+    const matchingRevive = revives.find(r => {
+      const rTs = r.ts || r._receivedAt || 0;
+      return rTs >= overTs && rTs < nextOverTs;
+    });
+    baseline = (matchingRevive && matchingRevive.reviveChoice === 'restart') ? 0 : total;
+    return delta;
+  });
+}
+
 function buildRunRows(events) {
   const bySession = new Map();
   for (const e of events) {
@@ -147,6 +176,7 @@ function buildRunRows(events) {
     const start = evs.find(e => e.type === 'game_start');
     const overs = evs.filter(e => e.type === 'game_over');
     const revives = evs.filter(e => e.type === 'revive_choice');
+    const deltas = distanceDeltas(overs, revives);
 
     let realAttemptCounter = 0;
     overs.forEach((over, i) => {
@@ -176,7 +206,8 @@ function buildRunRows(events) {
         'Skin': over.skin || (start || {}).skin || '',
         'Coins Earned': over.coinsEarned ?? '',
         'Zone Reached': over.zone ?? '',
-        'Ending Distance': over.distance ?? '',
+        "This Run's Distance": deltas[i],
+        'Total Distance': over.distance ?? '',
         'Survival Time (s)': over.survivalTime ?? '',
         'Jumps': over.jumps ?? '',
         'Moves': over.moves ?? '',
@@ -207,8 +238,9 @@ function buildPlayerSummaries(events) {
 
   const rows = [];
   for (const [playerId, evs] of byPlayer) {
-    const overs = evs.filter(e => e.type === 'game_over');
-    const revives = evs.filter(e => e.type === 'revive_choice');
+    const byTs = e => e.ts || e._receivedAt || 0;
+    const overs = evs.filter(e => e.type === 'game_over').sort((a, b) => byTs(a) - byTs(b));
+    const revives = evs.filter(e => e.type === 'revive_choice').sort((a, b) => byTs(a) - byTs(b));
     if (overs.length === 0) continue; // never actually finished a real attempt
 
     const group = overs.find(e => e.group != null)?.group
@@ -216,11 +248,13 @@ function buildPlayerSummaries(events) {
     const totalCoins = overs.reduce((a, e) => a + (e.coinsEarned || 0), 0);
     const avgZone = (overs.reduce((a, e) => a + (e.zone || 0), 0) / overs.length).toFixed(1);
     // Distance is now cumulative within a continuous streak (ad/coin revives
-    // no longer reset it — only Restart does), so summing across attempts
-    // would double-count the same ground covered more than once. The
-    // farthest point they ever reached (their longest single streak) is the
-    // meaningful number here.
+    // no longer reset it — only Restart does), so summing the raw per-attempt
+    // distance would double-count the same ground covered more than once.
+    // Longest = the farthest point reached in any single streak. Total =
+    // the real sum of ground covered, using the per-attempt deltas (see
+    // distanceDeltas above) so a continued streak isn't counted twice.
     const longestDistance = Math.round(overs.reduce((a, e) => Math.max(a, e.distance || 0), 0));
+    const totalDistance = distanceDeltas(overs, revives).reduce((a, d) => a + d, 0);
     const totalJumps = overs.reduce((a, e) => a + (e.jumps || 0), 0);
     const totalMoves = overs.reduce((a, e) => a + (e.moves || 0), 0);
     const smashGets = overs.reduce((a, e) => a + (e.smashGets || 0), 0);
@@ -249,6 +283,7 @@ function buildPlayerSummaries(events) {
       'Total Coins': totalCoins,
       'Avg Zone': avgZone,
       'Longest Distance': longestDistance,
+      'Total Distance': totalDistance,
       'Total Jumps': totalJumps,
       'Total Moves': totalMoves,
       'Smasher Picked Up': smashGets,
@@ -275,7 +310,8 @@ function buildDashboard(events) {
       <td>${escapeHtml(CHAR_LABELS[r['Character']] || r['Character'])}</td>
       <td>${r['Coins Earned']}</td>
       <td>${r['Zone Reached']}</td>
-      <td>${r['Ending Distance']}</td>
+      <td>${r["This Run's Distance"]}</td>
+      <td>${r['Total Distance']}</td>
       <td>${r['Survival Time (s)']}</td>
       <td>${r['Jumps']}</td>
       <td>${r['Moves']}</td>
@@ -294,6 +330,7 @@ function buildDashboard(events) {
       <td>${r['Total Coins']}</td>
       <td>${r['Avg Zone']}</td>
       <td>${r['Longest Distance']}</td>
+      <td>${r['Total Distance']}</td>
       <td>${r['Total Jumps']}</td>
       <td>${r['Total Moves']}</td>
       <td>${r['Smasher Picked Up']} / ${r['Smasher Used']}</td>
@@ -480,10 +517,10 @@ function buildDashboard(events) {
     <table>
       <tr>
         <th>Time</th><th>Player</th><th>Attempt #</th><th>Group</th><th>Phase</th><th>Character</th>
-        <th>Coins</th><th>Zone</th><th>Ending Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
+        <th>Coins</th><th>Zone</th><th>This Run's Distance</th><th>Total Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
         <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method</th><th>End Reason</th>
       </tr>
-      ${recentRows || '<tr><td colspan="15">No runs yet — go play!</td></tr>'}
+      ${recentRows || '<tr><td colspan="16">No runs yet — go play!</td></tr>'}
     </table>
   </div>
 
@@ -492,10 +529,10 @@ function buildDashboard(events) {
     <table>
       <tr>
         <th>Player</th><th>Group</th><th>Real Attempts</th><th>Final Balance</th><th>Total Coins Earned</th><th>Avg Zone</th>
-        <th>Longest Distance</th><th>Total Jumps</th><th>Total Moves</th>
+        <th>Longest Distance</th><th>Total Distance</th><th>Total Jumps</th><th>Total Moves</th>
         <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method breakdown</th>
       </tr>
-      ${playerSummaryRows || '<tr><td colspan="11">No real-phase attempts yet.</td></tr>'}
+      ${playerSummaryRows || '<tr><td colspan="12">No real-phase attempts yet.</td></tr>'}
     </table>
   </div>
 </body></html>`;
