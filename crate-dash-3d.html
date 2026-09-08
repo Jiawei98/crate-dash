@@ -2598,32 +2598,54 @@ $('btnRevive').onclick = () => doRevive(true);
 $('btnReviveAd').onclick = () => showAd('rewarded', () => { lastRewarded = true; doRevive(false); }, getReviveConfig().adSeconds);
 
 // ============ ADS (simulated) ============
-let adCb = null, adTick = null;
+let adCb = null, adTick = null, adDeadline = 0;
 function showAd(type, cb, seconds) {
   if (type === 'inter' && save.adsRemoved) { cb && cb(); return; }
   adCb = cb;
+  // A locked phone screen can fully suspend this tab's timers, silently
+  // stranding the player on this screen forever — keep the screen awake
+  // for the same reason active gameplay does.
+  keepScreenAwake();
   $('adview').classList.remove('hidden');
   $('btnAdClose').classList.add('hidden');
-  let t = seconds != null ? seconds : (type === 'rewarded' ? 5 : 3);
-  $('adTimer').textContent = t;
+  const total = seconds != null ? seconds : (type === 'rewarded' ? 5 : 3);
+  adDeadline = Date.now() + total * 1000;
+  $('adTimer').textContent = total;
   clearInterval(adTick);
+  // Wall-clock based, not a tick counter: a throttled/backgrounded tab can
+  // delay or skip individual ticks, but whichever tick fires next still
+  // sees the deadline has passed and finishes immediately, rather than
+  // needing exactly N one-second ticks to have actually occurred.
   adTick = setInterval(() => {
-    t--;
-    if (t <= 0) {
+    const remaining = Math.ceil((adDeadline - Date.now()) / 1000);
+    if (remaining <= 0) {
       clearInterval(adTick);
       $('adTimer').textContent = '✓';
       finishAd();
     } else {
-      $('adTimer').textContent = t;
+      $('adTimer').textContent = remaining;
     }
-  }, 1000);
+  }, 250);
+  // Final safety net in case both the interval and the visibilitychange
+  // catch-up somehow miss the deadline — this player is never left stuck.
+  setTimeout(() => { if (adCb === cb) finishAd(); }, total * 1000 + 5000);
 }
 function finishAd() {
+  clearInterval(adTick);
+  releaseScreenAwake();
   $('adview').classList.add('hidden');
   const cb = adCb; adCb = null;
   cb && cb();
 }
 $('btnAdClose').onclick = finishAd;
+// Belt-and-suspenders: if the tab was backgrounded long enough for the
+// browser to fully suspend its timers (common when a phone screen locks),
+// setInterval may not fire again until the tab is visible — this catches
+// that up the instant the player returns, instead of leaving them staring
+// at a "stuck" ad screen whose countdown already finished in the background.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && adCb && Date.now() >= adDeadline) finishAd();
+});
 
 
 $('btnShopBack').onclick = showMenu;
