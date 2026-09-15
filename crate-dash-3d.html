@@ -199,8 +199,14 @@
           <option value="prefer_not">Prefer not to say</option>
         </select>
       </label>
-      <label style="font-size:12px;color:#9fb4a6;">Nationality
-        <input id="demoNationality" type="text" placeholder="e.g. Portugal" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+      <label style="font-size:12px;color:#9fb4a6;">Do you spend real money in mobile/video games (in-app purchases, skins, etc.)?
+        <select id="demoSpending" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+          <option value="">Select...</option>
+          <option value="never">Never</option>
+          <option value="rarely">Rarely</option>
+          <option value="sometimes">Sometimes</option>
+          <option value="often">Often</option>
+        </select>
       </label>
       <label style="font-size:12px;color:#9fb4a6;">Academic major / field of study
         <input id="demoMajor" type="text" placeholder="e.g. Economics" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
@@ -1515,10 +1521,6 @@ function animateFace(dt, mode) {   // mode: 0 run, 1 air, 2 sword, 3 idle
 }
 function animatePlayer(dt, t, sp) {
   if (playerGLTF || !rig.on) return;
-  if (rig.deathT >= 0) {   // back in play after a revive: undo the knock-back pose
-    rig.deathT = -1; rig.land = 0; rig.wasAir = false;
-    player.rotation.set(0, 0, 0); player.position.z = 0; player.visible = true;
-  }
   const air = py > 0.02;
   rig.phase += dt * (7 + sp * 0.32);
   const ph = rig.phase, S = Math.sin(ph), C = Math.cos(ph);
@@ -2573,14 +2575,14 @@ $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
     const fields = {
       age: document.getElementById('demoAge').value.trim(),
       gender: document.getElementById('demoGender').value,
-      nationality: document.getElementById('demoNationality').value.trim(),
+      spendsInGames: document.getElementById('demoSpending').value,
       major: document.getElementById('demoMajor').value.trim(),
       gamingExperience: document.getElementById('demoExperience').value,
       gamingHoursPerWeek: document.getElementById('demoHours').value.trim(),
       device: document.getElementById('demoDevice').value,
       group: getPlayerGroup()
     };
-    const missing = ['age', 'gender', 'nationality', 'major', 'gamingExperience', 'gamingHoursPerWeek', 'device']
+    const missing = ['age', 'gender', 'spendsInGames', 'major', 'gamingExperience', 'gamingHoursPerWeek', 'device']
       .some(k => fields[k] === '' || fields[k] === null || fields[k] === undefined);
     if (missing) {
       document.getElementById('demoError').style.display = 'block';
@@ -2602,32 +2604,54 @@ $('btnRevive').onclick = () => doRevive(true);
 $('btnReviveAd').onclick = () => showAd('rewarded', () => { lastRewarded = true; doRevive(false); }, getReviveConfig().adSeconds);
 
 // ============ ADS (simulated) ============
-let adCb = null, adTick = null;
+let adCb = null, adTick = null, adDeadline = 0;
 function showAd(type, cb, seconds) {
   if (type === 'inter' && save.adsRemoved) { cb && cb(); return; }
   adCb = cb;
+  // A locked phone screen can fully suspend this tab's timers, silently
+  // stranding the player on this screen forever — keep the screen awake
+  // for the same reason active gameplay does.
+  keepScreenAwake();
   $('adview').classList.remove('hidden');
   $('btnAdClose').classList.add('hidden');
-  let t = seconds != null ? seconds : (type === 'rewarded' ? 5 : 3);
-  $('adTimer').textContent = t;
+  const total = seconds != null ? seconds : (type === 'rewarded' ? 5 : 3);
+  adDeadline = Date.now() + total * 1000;
+  $('adTimer').textContent = total;
   clearInterval(adTick);
+  // Wall-clock based, not a tick counter: a throttled/backgrounded tab can
+  // delay or skip individual ticks, but whichever tick fires next still
+  // sees the deadline has passed and finishes immediately, rather than
+  // needing exactly N one-second ticks to have actually occurred.
   adTick = setInterval(() => {
-    t--;
-    if (t <= 0) {
+    const remaining = Math.ceil((adDeadline - Date.now()) / 1000);
+    if (remaining <= 0) {
       clearInterval(adTick);
       $('adTimer').textContent = '✓';
       finishAd();
     } else {
-      $('adTimer').textContent = t;
+      $('adTimer').textContent = remaining;
     }
-  }, 1000);
+  }, 250);
+  // Final safety net in case both the interval and the visibilitychange
+  // catch-up somehow miss the deadline — this player is never left stuck.
+  setTimeout(() => { if (adCb === cb) finishAd(); }, total * 1000 + 5000);
 }
 function finishAd() {
+  clearInterval(adTick);
+  releaseScreenAwake();
   $('adview').classList.add('hidden');
   const cb = adCb; adCb = null;
   cb && cb();
 }
 $('btnAdClose').onclick = finishAd;
+// Belt-and-suspenders: if the tab was backgrounded long enough for the
+// browser to fully suspend its timers (common when a phone screen locks),
+// setInterval may not fire again until the tab is visible — this catches
+// that up the instant the player returns, instead of leaving them staring
+// at a "stuck" ad screen whose countdown already finished in the background.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && adCb && Date.now() >= adDeadline) finishAd();
+});
 
 
 $('btnShopBack').onclick = showMenu;

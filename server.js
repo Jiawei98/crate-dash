@@ -11,6 +11,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
@@ -106,22 +107,64 @@ function sendJSON(res, status, obj) {
 
 // Gates the dashboard and every route that exposes play data (raw JSON,
 // CSV exports) behind a password prompt — students shouldn't stumble onto
-// this just by guessing the URL. Uses HTTP Basic Auth so the browser itself
-// shows a native password box and remembers it for the rest of the session;
-// no cookies or login page to build. Reuses the same ADMIN_KEY as clearing
-// data / restarting a device. If ADMIN_KEY isn't set, these routes stay
-// open (consistent with every other admin feature defaulting to "off"
-// without a configured key) — set ADMIN_KEY to actually enable the gate.
+// this just by guessing the URL. Uses a plain password-only login page and
+// a session cookie (not HTTP Basic Auth, which always shows a browser
+// username field alongside the password — confusing when there's no
+// concept of a username here). Reuses the same ADMIN_KEY as clearing data /
+// restarting a device. If ADMIN_KEY isn't set, these routes stay open
+// (consistent with every other admin feature defaulting to "off" without a
+// configured key) — set ADMIN_KEY to actually enable the gate.
+const dashboardSessions = new Set();
+const SESSION_COOKIE = 'crateDashSession';
+function parseCookies(req) {
+  const out = {};
+  const header = req.headers.cookie || '';
+  header.split(';').forEach(part => {
+    const i = part.indexOf('=');
+    if (i === -1) return;
+    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  });
+  return out;
+}
+function sendLoginPage(res) {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Crate Dash — Login</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0a1a12; color:#eaf5ee; margin:0; padding:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .card { background:#122a1c; border:1px solid #2c4436; border-radius:12px; padding:28px 26px; width:260px; }
+  h1 { color:#6dff9c; font-size:18px; margin:0 0 16px; }
+  input { width:100%; padding:9px 10px; border-radius:8px; border:1px solid #2c4436; background:#0e2417; color:#eaf5ee; box-sizing:border-box; font-size:14px; }
+  button { width:100%; margin-top:12px; padding:10px; border:none; border-radius:8px; background:#6dff9c; color:#0a1a12; font-weight:700; font-size:14px; cursor:pointer; }
+  .err { color:#ff8080; font-size:12px; margin-top:10px; display:none; }
+</style></head>
+<body>
+  <form class="card" id="loginForm">
+    <h1>Dashboard password</h1>
+    <input type="password" id="pw" placeholder="Password" autofocus>
+    <button type="submit">Enter</button>
+    <div class="err" id="loginErr">Wrong password.</div>
+  </form>
+  <script>
+    document.getElementById('loginForm').onsubmit = async (e) => {
+      e.preventDefault();
+      document.getElementById('loginErr').style.display = 'none';
+      const res = await fetch('/api/dashboard-login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: document.getElementById('pw').value })
+      });
+      const data = await res.json();
+      if (data.ok) location.reload();
+      else document.getElementById('loginErr').style.display = 'block';
+    };
+  </script>
+</body></html>`);
+}
 function requireDashboardAuth(req, res) {
   if (!ADMIN_KEY) return true;
-  const header = req.headers['authorization'] || '';
-  if (header.startsWith('Basic ')) {
-    const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
-    const pass = decoded.includes(':') ? decoded.slice(decoded.indexOf(':') + 1) : decoded;
-    if (pass === ADMIN_KEY) return true;
-  }
-  res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Crate Dash Dashboard"', 'Content-Type': 'text/plain' });
-  res.end('Password required to view play data.');
+  const token = parseCookies(req)[SESSION_COOKIE];
+  if (token && dashboardSessions.has(token)) return true;
+  sendLoginPage(res);
   return false;
 }
 
@@ -214,7 +257,6 @@ function buildRunRows(events) {
         'Crate Smasher Picked Up': over.smashGets ?? 0,
         'Crate Smasher Used': over.smashUses ?? 0,
         'Revive Method': reviveMethod,
-        'End Reason': over.endReason || 'died',
         '_sortTs': overTs
       });
     });
@@ -317,7 +359,6 @@ function buildDashboard(events) {
       <td>${r['Moves']}</td>
       <td>${r['Crate Smasher Picked Up']} / ${r['Crate Smasher Used']}</td>
       <td>${escapeHtml(r['Revive Method'] || 'none')}</td>
-      <td>${escapeHtml(r['End Reason'] || '')}</td>
     </tr>`).join('');
 
   const playerRows = buildPlayerSummaries(events);
@@ -502,6 +543,7 @@ function buildDashboard(events) {
   <div class="tabs">
     <button class="tabBtn active" id="tabBtnAttempt" onclick="showTab('attempt')">By attempt</button>
     <button class="tabBtn" id="tabBtnPlayer" onclick="showTab('player')">By player</button>
+    <a href="#" onclick="fetch('/api/dashboard-logout',{method:'POST'}).then(()=>location.reload());return false;" style="margin-left:auto;align-self:center;font-size:12px;color:#7d947f;">Log out</a>
   </div>
   <script>
     function showTab(name) {
@@ -518,9 +560,9 @@ function buildDashboard(events) {
       <tr>
         <th>Time</th><th>Player</th><th>Attempt #</th><th>Group</th><th>Phase</th><th>Character</th>
         <th>Coins</th><th>Zone</th><th>This Run's Distance</th><th>Total Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
-        <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method</th><th>End Reason</th>
+        <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method</th>
       </tr>
-      ${recentRows || '<tr><td colspan="16">No runs yet — go play!</td></tr>'}
+      ${recentRows || '<tr><td colspan="15">No runs yet — go play!</td></tr>'}
     </table>
   </div>
 
@@ -579,7 +621,7 @@ function buildDemographicsRows(events) {
       'Group': e.group ?? '',
       'Age': e.age ?? '',
       'Gender': e.gender ?? '',
-      'Nationality': e.nationality ?? '',
+      'Spends in Games': e.spendsInGames ?? '',
       'Major': e.major ?? '',
       'Gaming Experience': e.gamingExperience ?? '',
       'Gaming Hours/Week': e.gamingHoursPerWeek ?? '',
@@ -636,6 +678,38 @@ const server = http.createServer((req, res) => {
   // researcher has cleared data since this browser last visited.
   if (req.method === 'GET' && url.pathname === '/api/reset-token') {
     return sendJSON(res, 200, { token: readResetToken() });
+  }
+
+  // Password-only login for the dashboard (and the data-export routes) —
+  // on success, issues a session cookie so requireDashboardAuth() lets
+  // subsequent requests through without asking again.
+  if (req.method === 'POST' && url.pathname === '/api/dashboard-login') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      if (!ADMIN_KEY) {
+        return sendJSON(res, 403, { ok: false, error: 'Dashboard login is disabled. Set the ADMIN_KEY environment variable to enable it.' });
+      }
+      let parsed;
+      try { parsed = JSON.parse(body || '{}'); } catch (e) {
+        return sendJSON(res, 400, { ok: false, error: 'invalid json' });
+      }
+      if (parsed.password !== ADMIN_KEY) {
+        return sendJSON(res, 200, { ok: false });
+      }
+      const token = crypto.randomBytes(24).toString('hex');
+      dashboardSessions.add(token);
+      res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=2592000`);
+      sendJSON(res, 200, { ok: true });
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/dashboard-logout') {
+    const token = parseCookies(req)[SESSION_COOKIE];
+    if (token) dashboardSessions.delete(token);
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0`);
+    return sendJSON(res, 200, { ok: true });
   }
 
   // Lightweight check only — no side effects. Used by the game's own
