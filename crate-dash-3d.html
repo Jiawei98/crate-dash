@@ -185,7 +185,7 @@
 
   <div id="demographics" class="overlay">
     <h1 style="font-size:22px;">Before you play</h1>
-    <div class="sub" style="max-width:340px;">Quick one-time survey — helps with research analysis. Takes 30 seconds.</div>
+    <div class="sub" style="max-width:340px;">Quick one-time survey — helps with research analysis. Feel free to skip anything you'd rather not answer.</div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;margin-top:14px;text-align:left;">
       <label style="font-size:12px;color:#9fb4a6;">Age
         <input id="demoAge" type="number" min="10" max="100" placeholder="e.g. 21" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
@@ -199,6 +199,9 @@
           <option value="prefer_not">Prefer not to say</option>
         </select>
       </label>
+      <label style="font-size:12px;color:#9fb4a6;">Academic major / field of study
+        <input id="demoMajor" type="text" placeholder="e.g. Economics" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
+      </label>
       <label style="font-size:12px;color:#9fb4a6;">Do you spend real money in mobile/video games (in-app purchases, skins, etc.)?
         <select id="demoSpending" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
           <option value="">Select...</option>
@@ -207,9 +210,6 @@
           <option value="sometimes">Sometimes</option>
           <option value="often">Often</option>
         </select>
-      </label>
-      <label style="font-size:12px;color:#9fb4a6;">Academic major / field of study
-        <input id="demoMajor" type="text" placeholder="e.g. Economics" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
       </label>
       <label style="font-size:12px;color:#9fb4a6;">Experience with computer games
         <select id="demoExperience" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
@@ -232,7 +232,6 @@
         </select>
       </label>
     </div>
-    <div id="demoError" style="color:#ff8080;font-size:12px;margin-top:8px;display:none;">Please fill in all fields.</div>
     <button class="btn" id="btnDemoSubmit" style="margin-top:16px;">Continue &rarr;</button>
   </div>
 
@@ -249,6 +248,8 @@
       <div class="enemy"><span class="eIco">🦁</span><div><b>Beast</b> — you <b>cannot jump</b> over a beast. Draw your sword and slash it down before you reach it.</div></div>
       <div class="ruleH2">✨ Super power — grab the glowing orb</div>
       <div class="enemy"><span class="eIco">🔨</span><div><b>Crate smasher</b> — smash straight through wooden crates without having to jump.</div></div>
+      <div class="ruleH2">💀 When you die</div>
+      <div class="ruleT">You'll get to choose: watch an ad or spend coins to keep going <b>right from where you died</b> — the game gets faster the further you've gone, so continuing from there means you can earn coins even quicker. Or, if you'd rather have a clean run, you can <b>restart from the very beginning</b> instead.</div>
       <div class="ruleT" style="margin-top:14px;color:#ffcf4d;font-weight:800;">💰 Coins are your score — every coin you collect adds to it. Grab as many as you can!</div>
     </div>
     <button class="btn" id="btnHowtoNext" style="margin-top:12px;">Got it — let's play ▶</button>
@@ -2575,20 +2576,13 @@ $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
     const fields = {
       age: document.getElementById('demoAge').value.trim(),
       gender: document.getElementById('demoGender').value,
-      spendsInGames: document.getElementById('demoSpending').value,
       major: document.getElementById('demoMajor').value.trim(),
+      spendsInGames: document.getElementById('demoSpending').value,
       gamingExperience: document.getElementById('demoExperience').value,
       gamingHoursPerWeek: document.getElementById('demoHours').value.trim(),
       device: document.getElementById('demoDevice').value,
       group: getPlayerGroup()
     };
-    const missing = ['age', 'gender', 'spendsInGames', 'major', 'gamingExperience', 'gamingHoursPerWeek', 'device']
-      .some(k => fields[k] === '' || fields[k] === null || fields[k] === undefined);
-    if (missing) {
-      document.getElementById('demoError').style.display = 'block';
-      return;
-    }
-    document.getElementById('demoError').style.display = 'none';
     try { localStorage.setItem('crateDashDemographics', JSON.stringify(fields)); } catch (e) {}
     trackEvent('demographics', fields);
     $('demographics').classList.add('hidden');
