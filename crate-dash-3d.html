@@ -240,7 +240,9 @@
     <div style="width:90%;max-width:400px;text-align:left;">
       <div class="ruleSec">
         <div class="ruleH">🎮 Controls</div>
-        <div class="ruleT">Tilt your phone left or right to switch lane (or swipe sideways / use ← → arrow keys). Swipe up or tap to jump. Hold <b>two fingers</b> on the screen to draw your ⚔ sword. The runner holds its lane — it only moves when you steer it.</div>
+        <div class="ruleT"><b>On phone:</b> tilt left/right to switch lane, or swipe sideways. Swipe up or tap to jump. Hold <b>two fingers</b> on the screen to draw your ⚔ sword.</div>
+        <div class="ruleT" style="margin-top:6px;"><b>On laptop:</b> ← → (or A/D) to switch lane. Space, ↑, or W to jump. Hold <b>S</b> to draw your ⚔ sword.</div>
+        <div class="ruleT" style="margin-top:6px;">The runner holds its lane — it only moves when you steer it.</div>
       </div>
       <div class="ruleH2">👹 Enemies — what stops you</div>
       <div class="enemy"><span class="eIco">📦</span><div><b>Wooden crate</b> — jump over it, or destroy it with your sword or the Crate Smasher power.</div></div>
@@ -1627,7 +1629,6 @@ function updateCurve(dt) {
       nextCurveAt = dist + 55 + rng() * 55;
     } else {
       curveTarget = 0;
-  calibrateTilt();
       nextCurveAt = dist + 40 + rng() * 55;
     }
   }
