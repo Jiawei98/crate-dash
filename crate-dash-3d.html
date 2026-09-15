@@ -240,7 +240,7 @@
     <div style="width:90%;max-width:400px;text-align:left;">
       <div class="ruleSec">
         <div class="ruleH">🎮 How to play</div>
-        <div class="ruleT"><b>On phone:</b> tilt left/right (or swipe sideways) to switch lane. Swipe up or tap to jump.</div>
+        <div class="ruleT"><b>On phone:</b> tilt left/right to switch lane. If you turn tilt off in Settings, swipe left/right instead — swipe left moves left, swipe right moves right, and a tap (or swipe up) jumps.</div>
         <div class="ruleT" style="margin-top:6px;"><b>On laptop:</b> ← → (or A/D) to switch lane. Space, ↑, or W to jump.</div>
         <div class="ruleT" style="margin-top:6px;">The runner holds its lane — it only moves when you steer it.</div>
       </div>
@@ -1969,7 +1969,15 @@ function levelUp() {
 let last = performance.now();
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min((now - last) / 1000, 0.033); last = now;
+  // Capping dt protects against a single huge step (e.g. the tab was
+  // backgrounded for a while and just resumed), but too tight a cap has
+  // the opposite problem: on a phone that can't quite sustain 30fps, every
+  // frame quietly loses the time beyond 33ms, so the entire game — not
+  // just any one thing — visibly runs in slow motion relative to the
+  // real world, the slower the device the worse it gets. 100ms (a 10fps
+  // floor) keeps real-time speed correct on much weaker hardware while
+  // still guarding against genuine multi-second spikes.
+  const dt = Math.min((now - last) / 1000, 0.1); last = now;
   const t = now * 0.001;
 
   if (zoneLerp < 1) {
