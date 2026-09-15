@@ -12,6 +12,9 @@ Then:
 - View collected data: http://localhost:3000/dashboard
 - Raw JSON: http://localhost:3000/api/events
 
+Note, for online deployment by railway, the game is in:
+- https://crate-dash-production.up.railway.app/
+
 Data is stored in `data/events.jsonl` (one JSON object per line — a `game_start`,
 `game_over`, `powerup_get`, and `powerup_use` event for every run). This format
 is easy to import into a spreadsheet, database, or Excel later — `/api/events`
