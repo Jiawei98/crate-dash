@@ -176,7 +176,7 @@
     <button class="pw" id="pw_smash">🔨<span class="cnt" id="pwn_smash">×1</span></button>
   </div>
 
-  <div id="mobileTip">Tilt to steer · swipe ▲ jump · hold 2 fingers = ⚔ sword</div>
+  <div id="mobileTip">Tilt to steer · swipe ▲ jump</div>
   <div id="rotateHint">Portrait mode gives the best view</div>
 
   <div id="banner"></div>
@@ -239,20 +239,19 @@
     <h1 style="font-size:clamp(26px,8vw,42px);"><span class="g1">HOW TO</span> <span class="g2">PLAY</span></h1>
     <div style="width:90%;max-width:400px;text-align:left;">
       <div class="ruleSec">
-        <div class="ruleH">🎮 Controls</div>
-        <div class="ruleT"><b>On phone:</b> tilt left/right to switch lane, or swipe sideways. Swipe up or tap to jump. Hold <b>two fingers</b> on the screen to draw your ⚔ sword.</div>
-        <div class="ruleT" style="margin-top:6px;"><b>On laptop:</b> ← → (or A/D) to switch lane. Space, ↑, or W to jump. Hold <b>S</b> to draw your ⚔ sword.</div>
+        <div class="ruleH">🎮 How to play</div>
+        <div class="ruleT"><b>On phone:</b> tilt left/right (or swipe sideways) to switch lane. Swipe up or tap to jump.</div>
+        <div class="ruleT" style="margin-top:6px;"><b>On laptop:</b> ← → (or A/D) to switch lane. Space, ↑, or W to jump.</div>
         <div class="ruleT" style="margin-top:6px;">The runner holds its lane — it only moves when you steer it.</div>
       </div>
-      <div class="ruleH2">👹 Enemies — what stops you</div>
-      <div class="enemy"><span class="eIco">📦</span><div><b>Wooden crate</b> — jump over it, or destroy it with your sword or the Crate Smasher power.</div></div>
-      <div class="enemy"><span class="eIco">🩶</span><div><b>Silver (steel) crate</b> — the sword can't cut through steel. You must <b>jump</b> these.</div></div>
-      <div class="enemy"><span class="eIco">🦁</span><div><b>Beast</b> — you <b>cannot jump</b> over a beast. Draw your sword and slash it down before you reach it.</div></div>
-      <div class="ruleH2">✨ Super power — grab the glowing orb</div>
-      <div class="enemy"><span class="eIco">🔨</span><div><b>Crate smasher</b> — smash straight through wooden crates without having to jump.</div></div>
+      <div class="ruleH2">🎯 Goal</div>
+      <div class="ruleT">Collect as many coins as you can — every coin adds to your score. Grab as many as possible!</div>
+      <div class="ruleH2">✨ Super power</div>
+      <div class="enemy"><span class="eIco">🔨</span><div>Run through a glowing orb to pick up a <b>Crate Smasher</b>. Tap the power icon at the bottom of the screen (or press <b>1</b> on a laptop) to use it — it smashes straight through wooden crates so you don't need to jump them.</div></div>
       <div class="ruleH2">💀 When you die</div>
       <div class="ruleT">You'll get to choose: watch an ad or spend coins to keep going <b>right from where you died</b> — the game gets faster the further you've gone, so continuing from there means you can earn coins even quicker. Or, if you'd rather have a clean run, you can <b>restart from the very beginning</b> instead.</div>
-      <div class="ruleT" style="margin-top:14px;color:#ffcf4d;font-weight:800;">💰 Coins are your score — every coin you collect adds to it. Grab as many as you can!</div>
+      <div class="ruleH2">👹 Obstacles</div>
+      <div class="ruleT">Wooden crates, silver crates, and beasts all block your lane — jump over any of them to get past.</div>
     </div>
     <button class="btn" id="btnHowtoNext" style="margin-top:12px;">Got it — let's play ▶</button>
   </div>
@@ -266,7 +265,7 @@
   <div id="menu" class="overlay hidden">
     <h1><span class="g1">CRATE</span> <span class="g2">DASH</span></h1>
     <div style="font-size:11px;letter-spacing:2px;color:#ffcf4d;margin-top:6px;text-transform:uppercase;">Forest Trail Edition</div>
-    <div class="sub">Tilt your phone (or swipe) to steer · swipe ▲ or tap to jump<br>Hold <b>two fingers</b> on screen to slash crates & beasts with your sword<br>Beasts can't be jumped — cut them down · silver crates resist the sword — jump them!</div>
+    <div class="sub">Tilt your phone (or swipe / use arrow keys) to steer · swipe ▲ or tap to jump — full instructions are on the How to Play page.</div>
     <div style="display:flex;gap:12px;justify-content:center;margin:2px 0 14px;">
       <div class="charCard" id="char_dax"><div style="font-size:30px;">🧢</div><div class="nm">Dax</div><div class="ds">Stocky sprinter</div></div>
       <div class="charCard" id="char_nova"><div style="font-size:30px;">🎀</div><div class="nm">Nova</div><div class="ds">Agile style</div></div>
@@ -282,7 +281,8 @@
   <div id="gameover" class="overlay hidden">
     <div style="font-size:15px;letter-spacing:3px;color:#b8c9bf;text-transform:uppercase;">Wiped out in <span id="goZone">Zone 1</span></div>
     <div id="bigScore">0</div>
-    <div class="stat" id="goBest" style="margin-bottom:16px;">Best: <b>0</b></div>
+    <div class="stat" id="goBest">Best: <b>0</b></div>
+    <div class="stat" id="goTotalCoins" style="margin-bottom:16px;color:#ffcf4d;">Total coins: <b>0</b></div>
     <div id="goTimer" class="stat hidden" style="margin-bottom:10px;color:#ffcf4d;font-weight:800;"></div>
     <div>
       <button class="btn gold" id="btnReviveAd">📺 Revive · free ad</button>
@@ -1801,11 +1801,11 @@ function spawnWave() {
       const b = makeBeast();
       b.position.set(LANES[l], 0, -95);
       scene.add(b);
-      obstacles.push({ mesh: b, lane: l, h: 99, z: -95, passed: false, beast: true });
+      obstacles.push({ mesh: b, lane: l, h: 3.1, z: -95, passed: false, beast: true });
       return;
     }
     if (rng() < 0.24) {
-      // Steel crate: the sword clangs off it — jumping is the only way over.
+      // Jumping is the only way over a steel crate.
       const g = makeSteelCrate();
       g.position.set(LANES[l], 0.78, -95);
       scene.add(g);
@@ -2177,17 +2177,10 @@ let tx = 0, ty = 0, tt = 0;
 function onPB(e) { return e.target && e.target.closest && e.target.closest('#powerBar, #btnSettings, #settings'); }
 window.addEventListener('touchstart', e => {
   if (!tiltPermAsked) { tiltPermAsked = true; askTiltPermission(); }
-  if (e.touches.length >= 2) { multiTouch = true; swordHeld = true; }
   if (state !== 'play' || onPB(e)) return;
   tx = e.touches[0].clientX; ty = e.touches[0].clientY; tt = performance.now();
 }, { passive: true });
 window.addEventListener('touchend', e => {
-  if (e.touches.length < 2) swordHeld = false;
-  if (multiTouch) {
-    // This gesture was a two-finger sword hold: don't read it as a tap or swipe.
-    if (e.touches.length === 0) multiTouch = false;
-    return;
-  }
   if (state !== 'play' || onPB(e)) return;
   const dx = e.changedTouches[0].clientX - tx;
   const dy = e.changedTouches[0].clientY - ty;
@@ -2195,7 +2188,6 @@ window.addEventListener('touchend', e => {
   else if (dy < -35) jump();
   else if (performance.now() - tt < 260) jump();
 }, { passive: true });
-window.addEventListener('touchcancel', () => { swordHeld = false; multiTouch = false; }, { passive: true });
 let mx = 0, my = 0;
 window.addEventListener('mousedown', e => { if (onPB(e)) return; mx = e.clientX; my = e.clientY; });
 window.addEventListener('mouseup', e => {
@@ -2204,9 +2196,7 @@ window.addEventListener('mouseup', e => {
   if (Math.abs(dx) > 35 && Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 1 : -1);
   else jump();
 });
-window.addEventListener('keyup', e => { if (e.code === 'KeyS') swordHeld = false; });
 window.addEventListener('keydown', e => {
-  if (e.code === 'KeyS') swordHeld = true;
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') move(-1);
   if (e.code === 'ArrowRight' || e.code === 'KeyD') move(1);
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') jump();
@@ -2515,6 +2505,7 @@ function showGameOver() {
   persistSave();
   $('bigScore').textContent = lastRunCoins;
   $('goBest').innerHTML = (lastRunCoins >= save.best && lastRunCoins > 0 ? '🏆 New best!' : 'Best: <b>' + save.best + '</b>');
+  $('goTotalCoins').innerHTML = 'Total coins: <b>' + save.coins + '</b>';
   $('goZone').textContent = 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
   applyGameOverButtons();
   $('hud').classList.add('hidden');
