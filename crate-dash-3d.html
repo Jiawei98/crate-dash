@@ -2551,6 +2551,16 @@ function doRevive(paid) {
   for (const o of obstacles) scene.remove(o.mesh);
   obstacles = [];
   distToNext = 25;
+  // The death "knocked back and tumbling" animation (see animateDeath)
+  // moves the player's position and rotation over time, and keeps moving
+  // them for as long as the player sits on the death screen deciding —
+  // left as-is, this can land the character far behind the camera (so it
+  // never actually reappears) or in a contorted pose. Put it back to a
+  // normal standing transform, same as resetRun() does, without touching
+  // anything else that's meant to carry over.
+  player.position.set(0, 0, 0);
+  player.rotation.set(0, 0, 0);
+  rig.deathT = -1; rig.land = 0; rig.wasAir = false;
   player.visible = true;
   $('gameover').classList.add('hidden');
   $('hud').classList.remove('hidden');
