@@ -186,6 +186,7 @@
   <div id="demographics" class="overlay">
     <h1 style="font-size:22px;">Before you play</h1>
     <div class="sub" style="max-width:340px;">Quick one-time survey — helps with research analysis. Feel free to skip anything you'd rather not answer.</div>
+    <div style="font-size:11px;color:#6d8074;margin-top:4px;">Developed by Prof. Domenico Fabrizi and Prof. Jiawei Huang</div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;margin-top:14px;text-align:left;">
       <label style="font-size:12px;color:#9fb4a6;">Age
         <input id="demoAge" type="number" min="10" max="100" placeholder="e.g. 21" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
@@ -279,9 +280,8 @@
   </div>
 
   <div id="gameover" class="overlay hidden">
-    <div style="font-size:15px;letter-spacing:3px;color:#b8c9bf;text-transform:uppercase;">Wiped out in <span id="goZone">Zone 1</span></div>
-    <div id="bigScore">0</div>
-    <div class="stat" id="goTotalCoins" style="margin-bottom:16px;color:#ffcf4d;">Total coins: <b>0</b></div>
+    <div class="stat" id="goGroup" style="color:#9fb4a6;">Group: <b>1</b></div>
+    <div class="stat" id="goTotalCoins" style="margin-bottom:16px;color:#ffcf4d;">Final Balance: <b>0</b></div>
     <div id="goTimer" class="stat hidden" style="margin-bottom:10px;color:#ffcf4d;font-weight:800;"></div>
     <div>
       <button class="btn gold" id="btnReviveAd">📺 Revive · free ad</button>
@@ -2423,9 +2423,8 @@ window.addEventListener('keydown', e => {
 function showGameOver() {
   releaseScreenAwake();
   persistSave();
-  $('bigScore').textContent = lastRunCoins;
-  $('goTotalCoins').innerHTML = 'Total coins: <b>' + save.coins + '</b>';
-  $('goZone').textContent = 'Zone ' + (zone + 1) + ' · ' + ZONES[zone % ZONES.length].name;
+  $('goGroup').innerHTML = 'Group: <b>' + getPlayerGroup() + '</b>';
+  $('goTotalCoins').innerHTML = 'Final Balance: <b>' + save.coins + '</b>';
   applyGameOverButtons();
   $('hud').classList.add('hidden');
   $('powerBar').classList.add('hidden');
