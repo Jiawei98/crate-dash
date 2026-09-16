@@ -176,7 +176,7 @@
     <button class="pw" id="pw_smash">🔨<span class="cnt" id="pwn_smash">×1</span></button>
   </div>
 
-  <div id="mobileTip">Tilt to steer · swipe ▲ jump</div>
+  <div id="mobileTip">Swipe ◀▶ to steer · swipe ▲ jump</div>
   <div id="rotateHint">Portrait mode gives the best view</div>
 
   <div id="banner"></div>
@@ -240,18 +240,18 @@
     <div style="width:90%;max-width:400px;text-align:left;">
       <div class="ruleSec">
         <div class="ruleH">🎮 How to play</div>
-        <div class="ruleT"><b>On phone:</b> tilt left/right to switch lane. If you turn tilt off in Settings, swipe left/right instead — swipe left moves left, swipe right moves right, and a tap (or swipe up) jumps.</div>
+        <div class="ruleT"><b>On phone:</b> swipe left/right to switch lane. Tap (or swipe up) to jump.</div>
         <div class="ruleT" style="margin-top:6px;"><b>On laptop:</b> ← → (or A/D) to switch lane. Space, ↑, or W to jump.</div>
         <div class="ruleT" style="margin-top:6px;">The runner holds its lane — it only moves when you steer it.</div>
       </div>
       <div class="ruleH2">🎯 Goal</div>
       <div class="ruleT">Collect as many coins as you can — every coin adds to your score. Grab as many as possible!</div>
       <div class="ruleH2">✨ Super power</div>
-      <div class="enemy"><span class="eIco">🔨</span><div>Run through a glowing orb to pick up a <b>Crate Smasher</b>. To use it, <b>tap the hammer icon</b> at the bottom of the screen — or on a laptop, <b>press 1</b>. It smashes straight through wooden crates and beasts, so you don't need to jump them.</div></div>
+      <div class="enemy"><span class="eIco">🔨</span><div>Run through a glowing orb to pick up a <b>Crate Smasher</b>. To use it, <b>tap the hammer icon</b> at the bottom of the screen — or on a laptop, <b>press 1</b>. It smashes straight through wooden crates, so you don't need to jump them.</div></div>
       <div class="ruleH2">💀 When you die</div>
       <div class="ruleT">You'll get to choose: watch an ad or spend coins to keep going <b>right from where you died</b> — the game gets faster the further you've gone, so continuing from there means you can earn coins even quicker. Or, if you'd rather have a clean run, you can <b>restart from the very beginning</b> instead.</div>
       <div class="ruleH2">👹 Obstacles</div>
-      <div class="ruleT">Wooden crates, silver crates, and beasts all block your lane — jump over any of them to get past.</div>
+      <div class="ruleT">Wooden crates and silver crates block your lane — jump over them to get past.</div>
     </div>
     <button class="btn" id="btnHowtoNext" style="margin-top:12px;">Got it — let's play ▶</button>
   </div>
@@ -265,7 +265,7 @@
   <div id="menu" class="overlay hidden">
     <h1><span class="g1">CRATE</span> <span class="g2">DASH</span></h1>
     <div style="font-size:11px;letter-spacing:2px;color:#ffcf4d;margin-top:6px;text-transform:uppercase;">Forest Trail Edition</div>
-    <div class="sub">Tilt your phone (or swipe / use arrow keys) to steer · swipe ▲ or tap to jump — full instructions are on the How to Play page.</div>
+    <div class="sub">Swipe (or use arrow keys) to steer · swipe ▲ or tap to jump — full instructions are on the How to Play page.</div>
     <div style="display:flex;gap:12px;justify-content:center;margin:2px 0 14px;">
       <div class="charCard" id="char_dax"><div style="font-size:30px;">🧢</div><div class="nm">Dax</div><div class="ds">Stocky sprinter</div></div>
       <div class="charCard" id="char_nova"><div style="font-size:30px;">🎀</div><div class="nm">Nova</div><div class="ds">Agile style</div></div>
@@ -556,7 +556,7 @@ const SKINS = [
   { id: 'gold',   name: 'Solid gold', color: 0xffcf4d, css: '#ffcf4d', price: 1500 },
   { id: 'shadow', name: 'Shadow',  color: 0x2c2c34, css: '#2c2c34', price: 2500 },
 ];
-const DEFAULT_SAVE = { coins: 50, best: 0, owned: { mint: true }, equipped: 'mint', adsRemoved: false, bundleBought: false, character: 'dax', tilt: true, tiltSens: 7, sound: true, haptics: true, shadows: true };
+const DEFAULT_SAVE = { coins: 50, best: 0, owned: { mint: true }, equipped: 'mint', adsRemoved: false, bundleBought: false, character: 'dax', tilt: false, tiltSens: 7, sound: true, haptics: true, shadows: true };
 let save = { ...DEFAULT_SAVE, owned: { ...DEFAULT_SAVE.owned } };
 try {
   const saved = JSON.parse(localStorage.getItem('crateDashMobileSaveV1') || 'null');
@@ -1715,101 +1715,11 @@ function makeSteelCrate() {
   return g;
 }
 
-function makeBeast() {
-  // Rigged grey wolf, running straight at the player: spine pivot, neck/head, four
-  // two-segment legs, jaw and tail chain — animated by animateBeast().
-  const g = new THREE.Group();
-  const fur   = new THREE.MeshLambertMaterial({ color: 0x625c54, map: furTex, bumpMap: furTex, bumpScale: 0.015, roughness: 0.92 });
-  const furDk = new THREE.MeshLambertMaterial({ color: 0x3f3a35, map: furTex, bumpMap: furTex, bumpScale: 0.015, roughness: 0.92 });
-  const cream = new THREE.MeshLambertMaterial({ color: 0xcdc5b6, map: furTex, roughness: 0.9 });
-  const black = new THREE.MeshLambertMaterial({ color: 0x0e0f11, roughness: 0.4 });
-  const tooth = new THREE.MeshLambertMaterial({ color: 0xf2efe6, roughness: 0.35 });
-  const sph = _sph, cyl = _cyl, at = _at;
-  const bodyG = new THREE.Group(); bodyG.position.y = 0.95; g.add(bodyG);
-  bodyG.add(at(sph(0.5, fur, 0.78, 0.82, 1.05), 0, 0.05, 0.4));
-  bodyG.add(at(sph(0.44, fur, 0.72, 0.72, 0.95), 0, -0.05, -0.5));
-  const spine = cyl(0.3, 0.34, 1.05, fur); spine.rotation.x = Math.PI / 2 + 0.1; bodyG.add(at(spine, 0, -0.02, -0.04));
-  bodyG.add(at(sph(0.34, cream, 0.6, 0.5, 0.95), 0, -0.22, 0.05));
-  for (let i = 0; i < 5; i++) { const h = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.26, 5), furDk); h.position.set((i % 2 ? 0.06 : -0.06), 0.42 - i * 0.03, 0.35 - i * 0.2); h.rotation.x = 0.5; bodyG.add(h); }   // raised hackles
-  const neck = new THREE.Group(); neck.position.set(0, 0.22, 0.72); bodyG.add(neck);
-  const nk = cyl(0.22, 0.3, 0.5, fur); nk.rotation.x = 0.75; neck.add(at(nk, 0, 0.0, 0.05));
-  const headG = new THREE.Group(); headG.position.set(0, 0.2, 0.3); neck.add(headG);
-  headG.add(sph(0.3, fur, 0.92, 0.88, 1.02));
-  const muzzle = cyl(0.1, 0.19, 0.44, fur); muzzle.rotation.x = Math.PI / 2 + 0.12; headG.add(at(muzzle, 0, -0.08, 0.34));
-  headG.add(at(sph(0.12, fur, 1, 0.7, 1.35), 0, 0.0, 0.3));
-  headG.add(at(sph(0.075, black, 1.2, 0.9, 0.9), 0, -0.04, 0.57));
-  const jaw = new THREE.Group(); jaw.position.set(0, -0.15, 0.12); headG.add(jaw);
-  jaw.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.08, 0.42), cream), 0, -0.02, 0.22));
-  jaw.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.3), new THREE.MeshLambertMaterial({ color: 0xb03a3a, roughness: 0.5 })), 0, 0.03, 0.2));   // tongue
-  for (const sx of [-1, 1]) { jaw.add(at(new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.09, 5), tooth), sx * 0.06, 0.06, 0.4)); headG.add(at(new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.11, 5), tooth), sx * 0.075, -0.2, 0.46)); }
-  for (const sx of [-1, 1]) {
-    headG.add(at(sph(0.075, furDk, 1, 1, 1, 8, 7), sx * 0.15, 0.09, 0.2));
-    headG.add(at(sph(0.048, new THREE.MeshLambertMaterial({ color: 0xffc23a, emissive: 0xffc23a, emissiveIntensity: 0.55 }), 1, 1, 1, 8, 7), sx * 0.15, 0.09, 0.25));
-    headG.add(at(sph(0.02, black, 1, 1, 1, 6, 5), sx * 0.15, 0.09, 0.29));
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.05), furDk); brow.position.set(sx * 0.15, 0.17, 0.22); brow.rotation.z = sx * 0.5; headG.add(brow);
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 4), fur); ear.position.set(sx * 0.19, 0.3, -0.1); ear.rotation.z = -sx * 0.3; ear.rotation.x = -0.9; headG.add(ear);   // pinned back
-  }
-  const legs = [];
-  function leg(x, z, front) {
-    const lg = new THREE.Group(); lg.position.set(x, -0.15, z); bodyG.add(lg);
-    lg.add(sph(0.12, fur, 1, 1, 1, 10, 8));
-    lg.add(at(cyl(0.11, 0.085, 0.42, fur, 8), 0, -0.21, 0));
-    const lower = new THREE.Group(); lower.position.y = -0.42; lg.add(lower);
-    lower.add(sph(0.085, fur, 1, 1, 1, 8, 6));
-    lower.add(at(cyl(0.07, 0.055, 0.34, furDk, 8), 0, -0.17, 0));
-    lower.add(at(sph(0.09, furDk, 1, 0.65, 1.35, 8, 6), 0, -0.36, 0.04));
-    lg.userData.lower = lower; lg.userData.front = front;
-    legs.push(lg);
-    return lg;
-  }
-  leg(-0.27, 0.5, true); leg(0.27, 0.5, true); leg(-0.26, -0.55, false); leg(0.26, -0.55, false);
-  const tsegs = []; let parent = bodyG, pz = -0.85;
-  for (let i = 0; i < 3; i++) {
-    const seg = new THREE.Group(); seg.position.set(0, i ? 0 : -0.08, i ? -0.3 : pz); parent.add(seg);
-    const m = cyl(0.08 + i * 0.02, 0.1 + i * 0.02, 0.32, i === 2 ? furDk : fur, 8); m.rotation.x = Math.PI / 2; m.position.z = -0.16; seg.add(m);
-    seg.rotation.x = i === 0 ? 0.6 : -0.15;
-    tsegs.push(seg); parent = seg;
-  }
-  g.scale.setScalar(1.15);
-  g.userData.rig = { body: bodyG, neck, head: headG, jaw, legs, tail: tsegs, ph: Math.random() * 6.28 };
-  g.traverse(mm => { if (mm.isMesh) mm.castShadow = true; });
-  return g;
-}
-function animateBeast(m, dt, t, sp) {
-  const r = m.userData.rig; if (!r) return;
-  r.ph += dt * (9 + sp * 0.3);
-  const ph = r.ph, offs = [0, 0.5, Math.PI + 0.2, Math.PI + 0.7];
-  r.legs.forEach((lg, i) => {
-    const p = ph + offs[i], S = Math.sin(p), C = Math.cos(p);
-    lg.rotation.x = (lg.userData.front ? 1.15 : 1.3) * S;
-    lg.userData.lower.rotation.x = lg.userData.front ? (0.15 + 1.4 * Math.max(0, C)) : -(0.1 + 1.2 * Math.max(0, C));
-  });
-  // A beast is always seen head-on (it's running straight at the player), where
-  // fore-aft leg swing alone barely reads — the up/down bounce and side-to-side
-  // sway below are what actually sell "running" from that angle, so both are
-  // pushed well beyond what a side-on view would need.
-  r.body.position.y = 0.95 + 0.22 * Math.abs(Math.sin(ph));
-  r.body.position.x = 0.09 * Math.sin(ph);
-  r.body.rotation.x = 0.16 * Math.sin(ph + 0.6);
-  r.body.rotation.z = 0.09 * Math.sin(ph);
-  r.neck.rotation.x = -0.08 * Math.sin(ph + 0.6);
-  r.head.rotation.x = -0.12 - 0.08 * Math.sin(ph + 1.8);
-  r.head.rotation.z = 0.06 * Math.sin(ph);
-  r.jaw.rotation.x = 0.3 + 0.18 * Math.sin(t * 9);
-  r.tail.forEach((s, i) => { s.rotation.y = Math.sin(t * 6 - i * 0.9) * 0.3; s.rotation.x = (i === 0 ? 0.6 : -0.15) + Math.sin(ph - i * 0.7) * 0.18; });
-}
 
 function spawnWave() {
   const kind = rng();
   if (kind < 0.62) {
     const l = Math.floor(rng() * 3);
-    if (dist > 110 && rng() < 0.24) {
-      const b = makeBeast();
-      b.position.set(LANES[l], 0, -95);
-      scene.add(b);
-      obstacles.push({ mesh: b, lane: l, h: 3.1, z: -95, passed: false, beast: true });
-      return;
-    }
     if (rng() < 0.24) {
       // Jumping is the only way over a steel crate.
       const g = makeSteelCrate();
@@ -1884,8 +1794,6 @@ function jump() {
 }
 function move(d) {
   if (state !== 'play') return;
-  tiltMuteUntil = performance.now() + 700;
-  calibrateTilt();
   const n = Math.min(2, Math.max(0, lane + d));
   if (n !== lane) { lane = n; targetX = LANES[lane]; runMoves++; beep(300, 0.05, 'square', 0.04); }
 }
@@ -2000,7 +1908,6 @@ function loop(now) {
     const newScore = Math.floor(dist / 3);
     if (newScore !== score) { score = newScore; updateHUD(); }
 
-    tiltSteer();
     player.position.x += (targetX - player.position.x) * Math.min(1, dt * 12);
     player.rotation.z = (targetX - player.position.x) * -0.12 + curve * 0.10;
     player.rotation.y += (-curve * 0.28 - player.rotation.y) * Math.min(1, dt * 5);
@@ -2058,7 +1965,6 @@ function loop(now) {
 
     for (const o of obstacles) {
       o.z += sp * dt; o.mesh.position.z = o.z; o.mesh.position.x = LANES[o.lane] + bend(o.z);
-      if (o.beast) animateBeast(o.mesh, dt, t, sp);
       if (swordActive() && o.steel && !o.clanged && !o.dead && !o.passed && o.lane === lane && o.z > -2.8 && o.z < 0.9) {
         o.clanged = true;
         beep(170, 0.13, 'sawtooth', 0.07); haptic(28);
@@ -2069,21 +1975,16 @@ function loop(now) {
         slashFx.position.set(LANES[o.lane] + bend(o.z), 1.35, o.z);
         slashFx.rotation.z = Math.random() * 3.14;
         slashFx.material.opacity = 0.9; slashFx.scale.setScalar(1); slashFx.visible = true;
-        if (o.beast) {
-          burst(LANES[o.lane] + bend(o.z), 1.3, o.z, 0xff5a4d);
-          runCoins += 1; beep(520, 0.1, 'square', 0.07); haptic(22);
-        } else {
-          burst(LANES[o.lane] + bend(o.z), 1.2, o.z, 0xb5793a);
-          runCoins += 1; beep(460, 0.07, 'square', 0.05); haptic(12);
-        }
+        burst(LANES[o.lane] + bend(o.z), 1.2, o.z, 0xb5793a);
+        runCoins += 1; beep(460, 0.07, 'square', 0.05); haptic(12);
         updateHUD();
         continue;
       }
       if (!o.passed && !o.dead && o.z > -0.9 && o.z < 0.9 && o.lane === lane && py < o.h - 0.35) {
         if (powers.smash > 0 && !o.steel) {
           o.dead = true; scene.remove(o.mesh);
-          burst(LANES[o.lane], 1.2, o.z, o.beast ? 0xff5a4d : 0xb5793a);
-          runCoins += 1; beep(o.beast ? 520 : 240, o.beast ? 0.1 : 0.12, 'square', 0.07); updateHUD();
+          burst(LANES[o.lane], 1.2, o.z, 0xb5793a);
+          runCoins += 1; beep(240, 0.12, 'square', 0.07); updateHUD();
         } else { die(); break; }
       }
       if (!o.passed && o.z > 1.2) {
@@ -2190,7 +2091,6 @@ function adaptQuality(now) {
 let tx = 0, ty = 0, tt = 0;
 function onPB(e) { return e.target && e.target.closest && e.target.closest('#powerBar, #btnSettings, #settings'); }
 window.addEventListener('touchstart', e => {
-  if (!tiltPermAsked) { tiltPermAsked = true; askTiltPermission(); }
   if (state !== 'play' || onPB(e)) return;
   tx = e.touches[0].clientX; ty = e.touches[0].clientY; tt = performance.now();
 }, { passive: true });
@@ -2362,8 +2262,6 @@ function toast(msg) {
   clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = 0, 2200);
 }
 function startGame(m) {
-  askTiltPermission();
-  calibrateTilt();
   // If no practice window is configured, there's no practice phase at all —
   // go straight to the real, counted session from the first click.
   if (!practiceWindowMinutes && gamePhase === 'practice') setGamePhase('real');
