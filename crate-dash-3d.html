@@ -186,7 +186,6 @@
   <div id="demographics" class="overlay">
     <h1 style="font-size:22px;">Before you play</h1>
     <div class="sub" style="max-width:340px;">Quick one-time survey — helps with research analysis. Feel free to skip anything you'd rather not answer.</div>
-    <div style="font-size:11px;color:#6d8074;margin-top:4px;">Developed by Prof. Domenico Fabrizi and Prof. Jiawei Huang</div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;margin-top:14px;text-align:left;">
       <label style="font-size:12px;color:#9fb4a6;">Age
         <input id="demoAge" type="number" min="10" max="100" placeholder="e.g. 21" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
@@ -234,6 +233,7 @@
       </label>
     </div>
     <button class="btn" id="btnDemoSubmit" style="margin-top:16px;">Continue &rarr;</button>
+    <div style="font-size:13px;color:#6d8074;margin-top:18px;">Developed by Prof. Domenico Fabrizi and Prof. Jiawei Huang</div>
   </div>
 
   <div id="howto" class="overlay hidden">
@@ -261,12 +261,13 @@
     <div style="font-size:40px;">🏁</div>
     <h1 style="font-size:20px;margin-top:10px;">Thank you for participating!</h1>
     <div class="sub" style="margin-top:8px;max-width:320px;">Your experiment has ended. You can close this page now.</div>
+    <div class="stat" id="eeGroup" style="color:#9fb4a6;margin-top:14px;">Group: <b>1</b></div>
+    <div class="stat" id="eeTotalCoins" style="color:#ffcf4d;">Final Balance: <b>0</b></div>
   </div>
 
   <div id="menu" class="overlay hidden">
     <h1><span class="g1">CRATE</span> <span class="g2">DASH</span></h1>
     <div style="font-size:11px;letter-spacing:2px;color:#ffcf4d;margin-top:6px;text-transform:uppercase;">Forest Trail Edition</div>
-    <div class="sub">Swipe (or use arrow keys) to steer · swipe ▲ or tap to jump — full instructions are on the How to Play page.</div>
     <div style="display:flex;gap:12px;justify-content:center;margin:2px 0 14px;">
       <div class="charCard" id="char_dax"><div style="font-size:30px;">🧢</div><div class="nm">Dax</div><div class="ds">Stocky sprinter</div></div>
       <div class="charCard" id="char_nova"><div style="font-size:30px;">🎀</div><div class="nm">Nova</div><div class="ds">Agile style</div></div>
@@ -294,7 +295,6 @@
     <div id="goFinished" class="hidden" style="margin-top:6px;">
       <div style="font-size:26px;">🎉</div>
       <div style="font-size:16px;color:#6dff9c;font-weight:800;margin-top:6px;">Thank you for participating!</div>
-      <div id="goFinishedSummary" style="font-size:13px;color:#9fb4a6;margin-top:8px;"></div>
       <div style="font-size:12px;color:#7d947f;margin-top:10px;">You can close this tab now.</div>
     </div>
   </div>
@@ -2373,7 +2373,6 @@ function finishSession() {
   $('btnStartReal').style.display = 'none';
   $('goTimeUp').classList.add('hidden');
   $('btnFinish').style.display = 'none';
-  $('goFinishedSummary').textContent = 'You made ' + totalRealAttempts + ' attempt' + (totalRealAttempts === 1 ? '' : 's') + ' · best single run: ' + save.best + ' coins';
   $('goFinished').classList.remove('hidden');
   beep(500, 0.1, 'sine', 0.06); setTimeout(() => beep(750, 0.14, 'sine', 0.06), 110); setTimeout(() => beep(1000, 0.18, 'sine', 0.06), 220);
 }
@@ -2651,7 +2650,12 @@ resetRun();
   let demoDone = null, finished = null;
   try { demoDone = localStorage.getItem('crateDashDemographics'); } catch (e) {}
   try { finished = localStorage.getItem('crateDashSessionFinished'); } catch (e) {}
-  if (finished === 'true') { sessionFinished = true; return; }
+  if (finished === 'true') {
+    sessionFinished = true;
+    $('eeGroup').innerHTML = 'Group: <b>' + getPlayerGroup() + '</b>';
+    $('eeTotalCoins').innerHTML = 'Final Balance: <b>' + save.coins + '</b>';
+    return;
+  }
   if (demoDone) showMenu();
 })();
 requestAnimationFrame(loop);
