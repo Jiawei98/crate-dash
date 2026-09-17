@@ -2383,7 +2383,7 @@ $('btnFinish').onclick = finishSession;
 // original attempt and their redo both stay linked to the same anonymous
 // id in the data, rather than looking like two different people.
 async function openAdminRestart() {
-  const key = prompt("Enter the admin password to restart this device's experiment (clears this browser's saved coins, group, and survey answer):");
+  const key = prompt("Enter the admin password to restart this device's experiment (clears this browser's saved coins, group, and survey answer, and deletes this player's past play records from the server):");
   if (key === null) return;
   try {
     const res = await fetch('/api/verify-admin-key', {
@@ -2393,6 +2393,18 @@ async function openAdminRestart() {
     });
     const data = await res.json();
     if (data.ok) {
+      const oldPlayerId = getPlayerId();
+      try {
+        await fetch('/api/delete-player-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, playerId: oldPlayerId })
+        });
+      } catch (e) {
+        // Don't block the local reset just because the server-side
+        // deletion request failed (e.g. offline) — the device reset is
+        // still the main thing the admin asked for.
+      }
       try {
         localStorage.removeItem('crateDashMobileSaveV1');
         localStorage.removeItem('crateDashDemographics');
@@ -2400,7 +2412,13 @@ async function openAdminRestart() {
         localStorage.removeItem('crateDashPlayerGroup');
         localStorage.removeItem('crateDashGamePhase');
         localStorage.removeItem('crateDashSessionFinished');
+        localStorage.removeItem('crateDashPlayerId');
       } catch (e) {}
+      // Clearing the localStorage key alone isn't enough — if anything
+      // (the still-running game loop, a pending event) calls persistSave()
+      // before the reload actually takes effect, it would just serialize
+      // the still-old in-memory save object right back into localStorage.
+      save = { ...DEFAULT_SAVE, owned: { ...DEFAULT_SAVE.owned } };
       alert('Restarted — reloading now.');
       location.reload();
     } else {

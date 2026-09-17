@@ -73,6 +73,22 @@ function clearEvents() {
   return { clearedCount: events.length, backupFile: path.basename(backupPath), resetToken };
 }
 
+// Removes every event for one specific player (used when a teacher resets
+// a single device via Ctrl+Alt+R) — backs up the full file first, same as
+// clearEvents(), but does NOT bump the global reset token: that would
+// incorrectly tell every OTHER player's browser to wipe their own local
+// data too, when only this one player's device and server data should go.
+function deletePlayerEvents(playerId) {
+  const events = readEvents();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.join(BACKUP_DIR, `events-${stamp}.jsonl`);
+  fs.copyFileSync(EVENTS_FILE, backupPath);
+  const kept = events.filter(e => e.playerId !== playerId);
+  const deletedCount = events.length - kept.length;
+  fs.writeFileSync(EVENTS_FILE, kept.map(e => JSON.stringify(e)).join('\n') + (kept.length ? '\n' : ''));
+  return { deletedCount, backupFile: path.basename(backupPath) };
+}
+
 // Global game settings (sound/vibration/shadows/tilt) that override every
 // player's local preference. A key is only present here when a researcher
 // has explicitly forced it via the dashboard — otherwise the game just uses
@@ -746,6 +762,36 @@ const server = http.createServer((req, res) => {
       }
       try {
         const result = clearEvents();
+        sendJSON(res, 200, { ok: true, ...result });
+      } catch (e) {
+        sendJSON(res, 500, { ok: false, error: e.message });
+      }
+    });
+    return;
+  }
+
+  // Used by the game's own Ctrl+Alt+R device restart — deletes just that
+  // one player's server-side data to match the local reset, without
+  // affecting anyone else's data or resetting the global reset token.
+  if (req.method === 'POST' && url.pathname === '/api/delete-player-data') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      if (!ADMIN_KEY) {
+        return sendJSON(res, 403, { ok: false, error: 'Deletion is disabled. Set the ADMIN_KEY environment variable to enable it.' });
+      }
+      let parsed;
+      try { parsed = JSON.parse(body || '{}'); } catch (e) {
+        return sendJSON(res, 400, { ok: false, error: 'invalid json' });
+      }
+      if (parsed.key !== ADMIN_KEY) {
+        return sendJSON(res, 401, { ok: false, error: 'Wrong or missing admin key.' });
+      }
+      if (!parsed.playerId || typeof parsed.playerId !== 'string') {
+        return sendJSON(res, 400, { ok: false, error: 'missing playerId' });
+      }
+      try {
+        const result = deletePlayerEvents(parsed.playerId);
         sendJSON(res, 200, { ok: true, ...result });
       } catch (e) {
         sendJSON(res, 500, { ok: false, error: e.message });
