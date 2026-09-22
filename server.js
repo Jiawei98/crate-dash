@@ -103,10 +103,15 @@ function writeSettings(obj) {
 }
 
 // Must match DEFAULT_SAVE.coins in crate-dash-3d.html (the balance every
-// player starts the real phase with) and REVIVE_DEFAULTS in the dashboard's
+// player starts the real phase with, unless the researcher has set
+// "Starting coins" in Game Settings) and REVIVE_DEFAULTS in the dashboard's
 // settings panel below (the built-in per-group coin cost, unless overridden
 // via Game Settings).
 const STARTING_COINS = 50;
+function getStartingCoins() {
+  const v = readSettings().startingCoins;
+  return typeof v === 'number' && v >= 0 ? v : STARTING_COINS;
+}
 const REVIVE_COST_DEFAULTS = { '1': 10, '2': 40, '3': 10, '4': 40 };
 function getCoinCostForGroup(group) {
   const gid = String(group);
@@ -186,6 +191,14 @@ function requireDashboardAuth(req, res) {
 
 const CHAR_LABELS = { dax: 'Dax', nova: 'Nova' };
 
+// Players pick their own session (T1-T4) on the demographics page instead of
+// being randomly assigned; the digit in the session label is exactly the
+// underlying group id events are stored with (`group: 1`..`4`), so display
+// code just formats that number back into its "T" label.
+function sessionLabel(group) {
+  return (group === '' || group === null || group === undefined) ? '' : 'T' + group;
+}
+
 // Groups every event by sessionId, then produces ONE ROW PER ATTEMPT (per
 // game_over event) rather than one row per session — since players can no
 // longer return to the menu to start a fresh session, a single session now
@@ -258,7 +271,7 @@ function buildRunRows(events) {
         'Session ID': sid,
         'Player ID': over.playerId || (start || {}).playerId || '',
         'Attempt #': attemptNum,
-        'Group': over.group ?? (matchingRevive || {}).group ?? '',
+        'Session': sessionLabel(over.group ?? (matchingRevive || {}).group ?? ''),
         'Phase': over.phase || '',
         'Ended At': new Date(overTs).toLocaleString(),
         'Character': over.character || (start || {}).character || '',
@@ -303,6 +316,11 @@ function buildPlayerSummaries(events) {
 
     const group = overs.find(e => e.group != null)?.group
       ?? revives.find(e => e.group != null)?.group ?? '';
+    // Prefer the endowment recorded on this player's own real-phase
+    // game_start (accurate even if the setting is changed later, e.g.
+    // between classes); fall back to the current setting for older events.
+    const startRecorded = evs.find(e => e.type === 'game_start' && typeof e.startingCoins === 'number');
+    const startingCoins = startRecorded ? startRecorded.startingCoins : getStartingCoins();
     const totalCoins = overs.reduce((a, e) => a + (e.coinsEarned || 0), 0);
     const avgZone = (overs.reduce((a, e) => a + (e.zone || 0), 0) / overs.length).toFixed(1);
     // Distance is now cumulative within a continuous streak (ad/coin revives
@@ -331,12 +349,13 @@ function buildPlayerSummaries(events) {
     const coinsSpent = coinReviveEvents.reduce(
       (a, r) => a + (typeof r.coinsCost === 'number' ? r.coinsCost : fallbackCoinCost), 0
     );
-    const finalBalance = STARTING_COINS + totalCoins - coinsSpent;
+    const finalBalance = startingCoins + totalCoins - coinsSpent;
 
     rows.push({
       'Player ID': playerId,
-      'Group': group,
+      'Session': sessionLabel(group),
       'Attempts': overs.length,
+      'Starting Coins': startingCoins,
       'Final Balance': finalBalance,
       'Total Coins': totalCoins,
       'Avg Zone': avgZone,
@@ -363,7 +382,7 @@ function buildDashboard(events) {
       <td>${escapeHtml(r['Ended At'])}</td>
       <td>${escapeHtml(r['Player ID'])}</td>
       <td>${r['Attempt #']}</td>
-      <td>${escapeHtml(String(r['Group'] ?? ''))}</td>
+      <td>${escapeHtml(String(r['Session'] ?? ''))}</td>
       <td>${escapeHtml(r['Phase'] || '')}</td>
       <td>${escapeHtml(CHAR_LABELS[r['Character']] || r['Character'])}</td>
       <td>${r['Coins Earned']}</td>
@@ -381,8 +400,9 @@ function buildDashboard(events) {
   const playerSummaryRows = playerRows.map(r => `
     <tr>
       <td>${escapeHtml(r['Player ID'])}</td>
-      <td>${escapeHtml(String(r['Group'] ?? ''))}</td>
+      <td>${escapeHtml(String(r['Session'] ?? ''))}</td>
       <td>${r['Attempts']}</td>
+      <td>${r['Starting Coins']}</td>
       <td>${r['Final Balance']}</td>
       <td>${r['Total Coins']}</td>
       <td>${r['Avg Zone']}</td>
@@ -418,7 +438,7 @@ function buildDashboard(events) {
       <p style="margin:0 0 16px;font-size:12px;color:#9fb4a6;">Forces this setting for every player's game, overriding their own device preference. "No override" leaves it up to each player (or its normal default).</p>
       <div id="settingsFields" style="display:flex;flex-direction:column;gap:12px;font-size:13px;"></div>
       <div style="margin:16px 0 8px;font-size:12px;color:#9fb4a6;border-top:1px solid #2c4436;padding-top:14px;">
-        Revive pricing by group (used to randomly assign each player)
+        Revive pricing by session (each player picks T1–T4 for themselves before playing)
       </div>
       <div id="reviveFields" style="display:flex;flex-direction:column;gap:8px;font-size:12px;"></div>
       <input type="password" id="settingsAdminKey" placeholder="Admin key" autocomplete="off" style="width:100%;margin-top:16px;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">
@@ -459,7 +479,8 @@ function buildDashboard(events) {
       { key: 'shadows', label: 'Shadows (quality)', type: 'bool' },
       { key: 'tilt', label: 'Tilt steering', type: 'bool' },
       { key: 'practiceWindowMinutes', label: 'Practice window (minutes)', type: 'number' },
-      { key: 'timeLimitMinutes', label: 'Real session time limit (minutes)', type: 'number' }
+      { key: 'timeLimitMinutes', label: 'Real session time limit (minutes)', type: 'number' },
+      { key: 'startingCoins', label: 'Starting coins (endowment for every student)', type: 'number', min: 0, placeholder: '50 (default)' }
     ];
     const REVIVE_GROUP_IDS = ['1', '2', '3', '4'];
     const REVIVE_DEFAULTS = {
@@ -472,7 +493,7 @@ function buildDashboard(events) {
     async function openSettingsPanel() {
       document.getElementById('settingsFields').innerHTML = SETTINGS_DEFS.map(d => {
         const control = d.type === 'number'
-          ? '<input type="number" min="1" step="1" id="setf_' + d.key + '" placeholder="No limit" style="width:90px;padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">'
+          ? '<input type="number" min="' + (d.min ?? 1) + '" step="1" id="setf_' + d.key + '" placeholder="' + (d.placeholder || 'No limit') + '" style="width:90px;padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">'
           : '<select id="setf_' + d.key + '" style="padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">' +
               '<option value="">No override</option>' +
               '<option value="true">Force On</option>' +
@@ -484,7 +505,7 @@ function buildDashboard(events) {
         '<div style="display:flex;gap:8px;color:#7d947f;"><span style="width:56px;flex-shrink:0;"></span><span style="width:78px;">Ad seconds</span><span style="width:78px;">Coin cost</span></div>' +
         REVIVE_GROUP_IDS.map(gid =>
           '<div style="display:flex;align-items:center;gap:8px;">' +
-            '<span style="width:56px;flex-shrink:0;">Group ' + gid + '</span>' +
+            '<span style="width:56px;flex-shrink:0;">T' + gid + '</span>' +
             '<input type="number" min="0" step="1" id="rev_ad_' + gid + '" style="width:70px;padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">' +
             '<input type="number" min="0" step="1" id="rev_coin_' + gid + '" style="width:70px;padding:6px;border-radius:6px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;">' +
           '</div>'
@@ -574,7 +595,7 @@ function buildDashboard(events) {
     <h2>Most recent runs <span style="color:#7d947f; font-weight:normal; font-size:12px;">(one row per attempt — practice attempts are numbered 0)</span> &nbsp;<a href="/api/export/attempts.csv" style="font-size:12px;">⬇ Export CSV (all rows)</a></h2>
     <table>
       <tr>
-        <th>Time</th><th>Player</th><th>Attempt #</th><th>Group</th><th>Phase</th><th>Character</th>
+        <th>Time</th><th>Player</th><th>Attempt #</th><th>Session</th><th>Phase</th><th>Character</th>
         <th>Coins</th><th>Zone</th><th>This Run's Distance</th><th>Total Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
         <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method</th>
       </tr>
@@ -586,11 +607,11 @@ function buildDashboard(events) {
     <h2>By player <span style="color:#7d947f; font-weight:normal; font-size:12px;">(real-phase attempts only — practice is excluded from every column here)</span> &nbsp;<a href="/api/export/players.csv" style="font-size:12px;">⬇ Export CSV</a> &nbsp;<a href="/api/export/demographics.csv" style="font-size:12px;">⬇ Export demographics CSV</a></h2>
     <table>
       <tr>
-        <th>Player</th><th>Group</th><th>Real Attempts</th><th>Final Balance</th><th>Total Coins Earned</th><th>Avg Zone</th>
+        <th>Player</th><th>Session</th><th>Real Attempts</th><th>Starting Coins</th><th>Final Balance</th><th>Total Coins Earned</th><th>Avg Zone</th>
         <th>Longest Distance</th><th>Total Distance</th><th>Total Jumps</th><th>Total Moves</th>
         <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method breakdown</th>
       </tr>
-      ${playerSummaryRows || '<tr><td colspan="12">No real-phase attempts yet.</td></tr>'}
+      ${playerSummaryRows || '<tr><td colspan="13">No real-phase attempts yet.</td></tr>'}
     </table>
   </div>
 </body></html>`;
@@ -634,7 +655,8 @@ function buildDemographicsRows(events) {
     seen.add(e.playerId);
     rows.push({
       'Player ID': e.playerId,
-      'Group': e.group ?? '',
+      'Session': e.session || sessionLabel(e.group),
+      'Self-rated Gaming Skill (1-5)': e.selfRatedSkill ?? '',
       'Age': e.age ?? '',
       'Gender': e.gender ?? '',
       'Spends in Games': e.spendsInGames ?? '',
