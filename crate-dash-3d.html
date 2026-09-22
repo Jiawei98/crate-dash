@@ -554,6 +554,18 @@ const ZONES = [
   { name: 'Moonlit Forest', sky: 0x101c30, fog: 0x24344a, ground: 0x24402e, path: 0x4a3e30, b: [0x2a6046, 0x1f4f38, 0x326a50], lit: true },
   { name: 'Misty Pines',    sky: 0x74b4d4, fog: 0xb4d6cc, ground: 0x3a8a52, path: 0x7e6a48, b: [0x2c8c5a, 0x3caa6e, 0x22784c], lit: true },
 ];
+// Motion-comfort: the bright, saturated grass streaming past is a big part
+// of what makes a fast runner feel dizzy, so every zone's ground and
+// foliage colours are toned down (about 40% less saturation, a touch
+// lighter) before use. Sky, fog and the path are left as they were.
+(function calmZoneColours() {
+  const calm = hex => {
+    const c = new THREE.Color(hex), h = { h: 0, s: 0, l: 0 };
+    c.getHSL(h);
+    return c.setHSL(h.h, h.s * 0.6, Math.min(0.9, h.l * 1.08)).getHex();
+  };
+  for (const z of ZONES) { z.ground = calm(z.ground); z.b = z.b.map(calm); }
+})();
 // Zone (and the speed increase that comes with each level-up) stops
 // climbing once the player reaches Zone 4 — zone is 0-indexed and shown
 // as "Zone " + (zone+1), so index 3 is the displayed "Zone 4".
@@ -1748,7 +1760,7 @@ function makeSteelCrate() {
 
 function spawnWave() {
   const kind = rng();
-  if (kind < 0.62) {
+  if (kind < 0.52) {
     const l = Math.floor(rng() * 3);
     if (rng() < 0.24) {
       // Jumping is the only way over a steel crate.
@@ -1758,7 +1770,7 @@ function spawnWave() {
       obstacles.push({ mesh: g, lane: l, h: 1.55, z: -95, passed: false, steel: true });
       return;
     }
-    const stacked = rng() < 0.3 && speed > 15;
+    const stacked = rng() < 0.35 && speed > 14;
     const g = makeCrate();
     if (stacked) { const top = makeCrate(); top.position.y = 1.55; g.add(top); }
     g.position.set(LANES[l], 0.78, -95);
@@ -1798,7 +1810,7 @@ function spawnWave() {
     scene.add(m);
     pups.push({ mesh: m, lane: l, z: -101, k, taken: false });
   }
-  distToNext = Math.max(9, 17 - zone * 1.2) * (0.8 + rng() * 0.5);
+  distToNext = Math.max(8, 13 - zone * 1.2) * (0.8 + rng() * 0.5);
 }
 
 // ============ AUDIO ============
