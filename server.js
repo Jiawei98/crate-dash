@@ -277,6 +277,7 @@ function buildRunRows(events) {
         'Character': over.character || (start || {}).character || '',
         'Skin': over.skin || (start || {}).skin || '',
         'Coins Earned': over.coinsEarned ?? '',
+        'Start Zone': over.startZone ?? '',
         'Zone Reached': over.zone ?? '',
         "This Run's Distance": deltas[i],
         'Total Distance': over.distance ?? '',
@@ -386,6 +387,7 @@ function buildDashboard(events) {
       <td>${escapeHtml(r['Phase'] || '')}</td>
       <td>${escapeHtml(CHAR_LABELS[r['Character']] || r['Character'])}</td>
       <td>${r['Coins Earned']}</td>
+      <td>${r['Start Zone']}</td>
       <td>${r['Zone Reached']}</td>
       <td>${r["This Run's Distance"]}</td>
       <td>${r['Total Distance']}</td>
@@ -480,7 +482,9 @@ function buildDashboard(events) {
       { key: 'tilt', label: 'Tilt steering', type: 'bool' },
       { key: 'practiceWindowMinutes', label: 'Practice window (minutes)', type: 'number' },
       { key: 'timeLimitMinutes', label: 'Real session time limit (minutes)', type: 'number' },
-      { key: 'startingCoins', label: 'Starting coins (endowment for every student)', type: 'number', min: 0, placeholder: '50 (default)' }
+      { key: 'startingCoins', label: 'Starting coins (endowment for every student)', type: 'number', min: 0, placeholder: '50 (default)' },
+      { key: 'speedStepPercent', label: 'Speed increase per zone (%)', type: 'number', min: 0, placeholder: '10 (default)' },
+      { key: 'crateGapMeters', label: 'Distance between crate waves (metres)', type: 'number', min: 1, placeholder: '17 (default)' }
     ];
     const REVIVE_GROUP_IDS = ['1', '2', '3', '4'];
     const REVIVE_DEFAULTS = {
@@ -596,10 +600,10 @@ function buildDashboard(events) {
     <table>
       <tr>
         <th>Time</th><th>Player</th><th>Attempt #</th><th>Session</th><th>Phase</th><th>Character</th>
-        <th>Coins</th><th>Zone</th><th>This Run's Distance</th><th>Total Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
+        <th>Coins</th><th>Start Zone</th><th>Zone Reached</th><th>This Run's Distance</th><th>Total Distance</th><th>Time (s)</th><th>Jumps</th><th>Moves</th>
         <th>🔨 Crate Smasher (picked up / used)</th><th>Revive Method</th>
       </tr>
-      ${recentRows || '<tr><td colspan="15">No runs yet — go play!</td></tr>'}
+      ${recentRows || '<tr><td colspan="16">No runs yet — go play!</td></tr>'}
     </table>
   </div>
 

@@ -570,8 +570,14 @@ const ZONES = [
 // climbing once the player reaches Zone 4 — zone is 0-indexed and shown
 // as "Zone " + (zone+1), so index 3 is the displayed "Zone 4".
 const MAX_ZONE_INDEX = 3;
-// Speed multiplier applied at each level-up.
+// Speed multiplier applied at each level-up, and the base distance between
+// crate waves. Both are defaults — the researcher can override them for
+// everyone from the dashboard's Game Settings ("Speed increase per zone",
+// "Distance between crate waves").
 const SPEED_STEP = 1.10;
+let speedStep = SPEED_STEP;
+const CRATE_GAP_METERS = 17;
+let crateGapMeters = CRATE_GAP_METERS;
 const SKINS = [
   { id: 'mint',   name: 'Classic', color: 0x6dff9c, css: '#6dff9c', price: 0 },
   { id: 'orange', name: 'Tiger',   color: 0xff8c3d, css: '#ff8c3d', price: 300 },
@@ -615,6 +621,8 @@ fetch('/api/settings').then(r => r.ok ? r.json() : {}).then(cfg => {
   if (typeof cfg.tilt === 'boolean') { save.tilt = cfg.tilt; changed = true; }
   if (typeof cfg.timeLimitMinutes === 'number' && cfg.timeLimitMinutes > 0) { timeLimitMinutes = cfg.timeLimitMinutes; }
   if (typeof cfg.practiceWindowMinutes === 'number' && cfg.practiceWindowMinutes > 0) { practiceWindowMinutes = cfg.practiceWindowMinutes; }
+  if (typeof cfg.speedStepPercent === 'number' && cfg.speedStepPercent >= 0) { speedStep = 1 + cfg.speedStepPercent / 100; }
+  if (typeof cfg.crateGapMeters === 'number' && cfg.crateGapMeters > 0) { crateGapMeters = cfg.crateGapMeters; }
   if (typeof cfg.startingCoins === 'number' && cfg.startingCoins >= 0) {
     startingCoins = cfg.startingCoins;
     // Only a player who hasn't started playing yet (brand new, or survey
@@ -1657,8 +1665,11 @@ let runTime = 0, jumps = 0, runMoves = 0, runJumps = 0;
 // offset laterally as a smooth function of depth, so the camera tracks the
 // bend without any cut.
 let curve = 0, curveTarget = 0, nextCurveAt = 60;
-// No coins appear until the player has got past their first crate.
+// No coins appear until the player has got past their first crate (of
+// the run, and again after every revive).
 let firstCratePassed = false;
+// Zone this life started in (1 for a fresh run; the death zone after a revive).
+let lifeStartZone = 1;
 function resetCurveSystem() {
   curve = 0; curveTarget = 0;
   nextCurveAt = 45 + rng() * 40;
@@ -1702,6 +1713,7 @@ function resetRun() {
   runSkillUses = { smash: 0 };
   distToNext = 18;
   firstCratePassed = false;
+  lifeStartZone = 1;
   resetCurveSystem();
   if (zone !== 0) { zone = 0; applyZone(true); } else { zone = 0; rebuildDecos(); }
   player.position.set(0, 0, 0);
@@ -1826,7 +1838,8 @@ function spawnWave() {
     scene.add(m);
     pups.push({ mesh: m, lane: l, z: -101, k, taken: false });
   }
-  distToNext = Math.max(9, 17 - zone * 1.2) * (0.8 + rng() * 0.5);
+  // Base gap shrinks a little per zone, never below ~half the base.
+  distToNext = Math.max(crateGapMeters * 0.53, crateGapMeters - zone * 1.2) * (0.8 + rng() * 0.5);
 }
 
 // ============ AUDIO ============
@@ -1902,7 +1915,7 @@ function recordGameOver(endReason) {
   if (gamePhase === 'real') totalRealAttempts++;
   persistSave();
   trackEvent('game_over', {
-    mode, score, coinsEarned: runCoins, zone: zone + 1,
+    mode, score, coinsEarned: runCoins, zone: zone + 1, startZone: lifeStartZone,
     character: save.character, skin: save.equipped, group: getPlayerGroup(),
     distance: Math.floor(dist), survivalTime: Number(runTime.toFixed(1)), jumps: runJumps, moves: runMoves,
     smashGets: runSkillGets.smash, smashUses: runSkillUses.smash,
@@ -1921,7 +1934,7 @@ function die(reason) {
 }
 function levelUp() {
   zone++;
-  speed *= SPEED_STEP;
+  speed *= speedStep;
   applyZone(false);
   const z = ZONES[zone % ZONES.length];
   const b = document.getElementById('banner');
@@ -2556,6 +2569,12 @@ function doRevive(paid) {
   curveTarget = 0;
   for (const o of obstacles) scene.remove(o.mesh);
   obstacles = [];
+  // Same rule as a fresh run: nothing to collect until they've cleared the
+  // first crate after coming back — so any coins already on the track go too.
+  for (const c of coins) scene.remove(c.mesh);
+  coins = [];
+  firstCratePassed = false;
+  lifeStartZone = zone + 1;
   distToNext = 25;
   // The death "knocked back and tumbling" animation (see animateDeath)
   // moves the player's position and rotation over time, and keeps moving
