@@ -197,16 +197,6 @@
           <option value="T4">T4</option>
         </select>
       </label>
-      <label style="font-size:12px;color:#9fb4a6;">How good do I think I am in playing video games?
-        <select id="demoSkill" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
-          <option value="">Select...</option>
-          <option value="1">1 (not capable)</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5 (very capable)</option>
-        </select>
-      </label>
       <label style="font-size:12px;color:#9fb4a6;">Age
         <input id="demoAge" type="number" min="10" max="100" placeholder="e.g. 21" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
       </label>
@@ -243,13 +233,9 @@
       <label style="font-size:12px;color:#9fb4a6;">Hours of gaming per week
         <input id="demoHours" type="number" min="0" max="100" placeholder="e.g. 5" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
       </label>
-      <label style="font-size:12px;color:#9fb4a6;">Playing on
-        <select id="demoDevice" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2c4436;background:#0e2417;color:#eaf5ee;margin-top:2px;">
-          <option value="">Select...</option>
-          <option value="phone">Cell phone</option>
-          <option value="laptop">Laptop</option>
-          <option value="tablet">Tablet</option>
-        </select>
+      <label style="font-size:12px;color:#9fb4a6;">How good do I think I am in playing video games? <span id="demoSkillVal" style="color:#6dff9c;font-weight:800;font-size:14px;">&mdash;</span>
+        <input id="demoSkill" type="range" min="1" max="10" step="1" value="5" style="width:100%;margin-top:8px;accent-color:#6dff9c;cursor:pointer;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#6d8074;margin-top:2px;"><span>1 (not capable)</span><span>10 (very capable)</span></div>
       </label>
     </div>
     <button class="btn" id="btnDemoSubmit" style="margin-top:16px;">Continue &rarr;</button>
@@ -569,9 +555,11 @@ const ZONES = [
   { name: 'Misty Pines',    sky: 0x74b4d4, fog: 0xb4d6cc, ground: 0x3a8a52, path: 0x7e6a48, b: [0x2c8c5a, 0x3caa6e, 0x22784c], lit: true },
 ];
 // Zone (and the speed increase that comes with each level-up) stops
-// climbing once the player reaches Zone 6 — zone is 0-indexed and shown
-// as "Zone " + (zone+1), so index 5 is the displayed "Zone 6".
-const MAX_ZONE_INDEX = 5;
+// climbing once the player reaches Zone 4 — zone is 0-indexed and shown
+// as "Zone " + (zone+1), so index 3 is the displayed "Zone 4".
+const MAX_ZONE_INDEX = 3;
+// Speed multiplier applied at each level-up (was 1.12 — too dizzying).
+const SPEED_STEP = 1.07;
 const SKINS = [
   { id: 'mint',   name: 'Classic', color: 0x6dff9c, css: '#6dff9c', price: 0 },
   { id: 'orange', name: 'Tiger',   color: 0xff8c3d, css: '#ff8c3d', price: 300 },
@@ -1904,7 +1892,7 @@ function die(reason) {
 }
 function levelUp() {
   zone++;
-  speed *= 1.12;
+  speed *= SPEED_STEP;
   applyZone(false);
   const z = ZONES[zone % ZONES.length];
   const b = document.getElementById('banner');
@@ -2578,7 +2566,11 @@ $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
 // Initial show/hide of #demographics vs #menu already happened instantly at
 // the top of the page (before this heavy script even started loading), so
 // this only needs to wire up the submit button.
+let demoSkillTouched = false;
 (function initDemographics() {
+  const slider = $('demoSkill');
+  const markTouched = () => { demoSkillTouched = true; $('demoSkillVal').textContent = slider.value; };
+  ['input', 'change', 'pointerdown', 'touchstart', 'keydown'].forEach(ev => slider.addEventListener(ev, markTouched, { passive: true }));
   $('btnDemoSubmit').onclick = () => {
     const sessionVal = document.getElementById('demoSession').value;
     if (!sessionVal) {
@@ -2588,14 +2580,16 @@ $('btnPlay').onclick = () => { enterFullscreen(); startGame('endless'); };
     const assignedGroup = setPlayerSession(sessionVal);
     const fields = {
       session: sessionVal,
-      selfRatedSkill: document.getElementById('demoSkill').value,
+      // A slider always has a value, so only record it once the student has
+      // actually touched it — otherwise the untouched default would look
+      // like a real answer.
+      selfRatedSkill: demoSkillTouched ? document.getElementById('demoSkill').value : '',
       age: document.getElementById('demoAge').value.trim(),
       gender: document.getElementById('demoGender').value,
       major: document.getElementById('demoMajor').value.trim(),
       spendsInGames: document.getElementById('demoSpending').value,
       gamingExperience: document.getElementById('demoExperience').value,
       gamingHoursPerWeek: document.getElementById('demoHours').value.trim(),
-      device: document.getElementById('demoDevice').value,
       group: assignedGroup
     };
     try { localStorage.setItem('crateDashDemographics', JSON.stringify(fields)); } catch (e) {}

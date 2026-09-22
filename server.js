@@ -656,14 +656,13 @@ function buildDemographicsRows(events) {
     rows.push({
       'Player ID': e.playerId,
       'Session': e.session || sessionLabel(e.group),
-      'Self-rated Gaming Skill (1-5)': e.selfRatedSkill ?? '',
+      'Self-rated Gaming Skill (1-10)': e.selfRatedSkill ?? '',
       'Age': e.age ?? '',
       'Gender': e.gender ?? '',
       'Spends in Games': e.spendsInGames ?? '',
       'Major': e.major ?? '',
       'Gaming Experience': e.gamingExperience ?? '',
-      'Gaming Hours/Week': e.gamingHoursPerWeek ?? '',
-      'Device': e.device ?? ''
+      'Gaming Hours/Week': e.gamingHoursPerWeek ?? ''
     });
   }
   return rows;
