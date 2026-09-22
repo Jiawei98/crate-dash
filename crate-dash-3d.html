@@ -467,7 +467,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 wrap.insertBefore(renderer.domElement, wrap.firstChild);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 160);
+const camera = new THREE.PerspectiveCamera(54, 1, 0.1, 160);
 camera.position.set(0, 4.9, 8.4);
 camera.lookAt(0, 1.5, -9);
 
@@ -558,8 +558,8 @@ const ZONES = [
 // climbing once the player reaches Zone 4 — zone is 0-indexed and shown
 // as "Zone " + (zone+1), so index 3 is the displayed "Zone 4".
 const MAX_ZONE_INDEX = 3;
-// Speed multiplier applied at each level-up (was 1.12 — too dizzying).
-const SPEED_STEP = 1.07;
+// Speed multiplier applied at each level-up.
+const SPEED_STEP = 1.10;
 const SKINS = [
   { id: 'mint',   name: 'Classic', color: 0x6dff9c, css: '#6dff9c', price: 0 },
   { id: 'orange', name: 'Tiger',   color: 0xff8c3d, css: '#ff8c3d', price: 300 },
@@ -1649,19 +1649,19 @@ function resetCurveSystem() {
 }
 function bend(z) {
   const d = Math.min(0, z);
-  return curve * 0.0013 * d * d;
+  return curve * 0.0007 * d * d;
 }
 function updateCurve(dt) {
   if (dist >= nextCurveAt) {
     if (curveTarget === 0) {
-      curveTarget = (rng() < 0.5 ? -1 : 1) * (0.55 + rng() * 0.45);
+      curveTarget = (rng() < 0.5 ? -1 : 1) * (0.4 + rng() * 0.3);
       nextCurveAt = dist + 55 + rng() * 55;
     } else {
       curveTarget = 0;
       nextCurveAt = dist + 40 + rng() * 55;
     }
   }
-  curve += (curveTarget - curve) * Math.min(1, dt * 0.9);
+  curve += (curveTarget - curve) * Math.min(1, dt * 0.5);
 }
 
 const powers = { smash: 0 };
@@ -2089,13 +2089,17 @@ function loop(now) {
 
   if (shakeT > 0) {
     shakeT -= dt;
-    camera.position.x = (Math.random() - 0.5) * 0.4;
-    camera.position.y = 4.9 + (Math.random() - 0.5) * 0.4;
+    camera.position.x = (Math.random() - 0.5) * 0.2;
+    camera.position.y = 4.9 + (Math.random() - 0.5) * 0.2;
   } else {
-    camera.position.x += ((player.position.x * 0.35 + curve * 0.5) - camera.position.x) * Math.min(1, dt * 5);
+    // Motion-comfort: the camera follows the runner and the road bends only
+    // gently (small lateral chase, little yaw, slow easing) so the horizon
+    // stays close to still — sideways swing of the whole scene is the main
+    // thing that makes people dizzy in a runner.
+    camera.position.x += ((player.position.x * 0.25 + curve * 0.3) - camera.position.x) * Math.min(1, dt * 3.5);
     camera.position.y = 4.9;
     camera.position.z = 8.4;
-    camera.lookAt(camera.position.x * 0.15 + curve * 0.9, 1.5, -9);
+    camera.lookAt(camera.position.x * 0.15 + curve * 0.4, 1.5, -9);
   }
 
   renderer.render(scene, camera);
