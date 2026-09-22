@@ -571,7 +571,7 @@ const ZONES = [
 // as "Zone " + (zone+1), so index 3 is the displayed "Zone 4".
 const MAX_ZONE_INDEX = 3;
 // Speed multiplier applied at each level-up.
-const SPEED_STEP = 1.08;
+const SPEED_STEP = 1.10;
 const SKINS = [
   { id: 'mint',   name: 'Classic', color: 0x6dff9c, css: '#6dff9c', price: 0 },
   { id: 'orange', name: 'Tiger',   color: 0xff8c3d, css: '#ff8c3d', price: 300 },
@@ -1657,6 +1657,8 @@ let runTime = 0, jumps = 0, runMoves = 0, runJumps = 0;
 // offset laterally as a smooth function of depth, so the camera tracks the
 // bend without any cut.
 let curve = 0, curveTarget = 0, nextCurveAt = 60;
+// No coins appear until the player has got past their first crate.
+let firstCratePassed = false;
 function resetCurveSystem() {
   curve = 0; curveTarget = 0;
   nextCurveAt = 45 + rng() * 40;
@@ -1699,6 +1701,7 @@ function resetRun() {
   runSkillGets = { smash: 0 };
   runSkillUses = { smash: 0 };
   distToNext = 18;
+  firstCratePassed = false;
   resetCurveSystem();
   if (zone !== 0) { zone = 0; applyZone(true); } else { zone = 0; rebuildDecos(); }
   player.position.set(0, 0, 0);
@@ -1762,7 +1765,7 @@ function makeSteelCrate() {
 
 function spawnWave() {
   const kind = rng();
-  if (kind < 0.62) {
+  if (kind < 0.45) {
     const l = Math.floor(rng() * 3);
     if (rng() < 0.24) {
       // Jumping is the only way over a steel crate.
@@ -1779,7 +1782,11 @@ function spawnWave() {
     scene.add(g);
     obstacles.push({ mesh: g, lane: l, h: stacked ? 3.1 : 1.55, z: -95, passed: false });
   } else {
+    // Two lanes blocked by tall (unjumpable) stacks; the third lane is
+    // either a coin gap (easier) or a single low crate that has to be
+    // jumped (harder) — the "two tall + one low" combo.
     const open = Math.floor(rng() * 3);
+    const lowCrateInGap = kind >= 0.70;
     for (let l = 0; l < 3; l++) {
       if (l === open) continue;
       const g = makeCrate();
@@ -1788,13 +1795,20 @@ function spawnWave() {
       scene.add(g);
       obstacles.push({ mesh: g, lane: l, h: 3.1, z: -95, passed: false });
     }
-    const c = new THREE.Mesh(G.coin, M.coin);
-    c.rotation.x = Math.PI / 2;
-    c.position.set(LANES[open], 1.2, -95);
-    scene.add(c);
-    coins.push({ mesh: c, lane: open, z: -95, taken: false });
+    if (lowCrateInGap) {
+      const g = makeCrate();
+      g.position.set(LANES[open], 0.78, -95);
+      scene.add(g);
+      obstacles.push({ mesh: g, lane: open, h: 1.55, z: -95, passed: false });
+    } else if (firstCratePassed) {
+      const c = new THREE.Mesh(G.coin, M.coin);
+      c.rotation.x = Math.PI / 2;
+      c.position.set(LANES[open], 1.2, -95);
+      scene.add(c);
+      coins.push({ mesh: c, lane: open, z: -95, taken: false });
+    }
   }
-  if (rng() < 0.5) {
+  if (firstCratePassed && rng() < 0.5) {
     const l = Math.floor(rng() * 3);
     for (let i = 0; i < 3; i++) {
       const c = new THREE.Mesh(G.coin, M.coin);
@@ -2034,6 +2048,7 @@ function loop(now) {
       }
       if (!o.passed && o.z > 1.2) {
         o.passed = true;
+        firstCratePassed = true;
         if (o.lane === lane && o.h < 2 && py > 0.2) beep(650, 0.05, 'square', 0.03);
       }
     }
